@@ -11,8 +11,9 @@ Forge-App für Jira Cloud: Ankündigungen, die Jira-Benutzern als Popup angezeig
 - **Zielgruppe – Gruppen:** optional nur für Mitglieder bestimmter Jira-Gruppen. Projekte und Gruppen gelten gemeinsam (UND).
 - **Zeitraum:** optional „anzeigen ab“ / „anzeigen bis“, dazu ein Ein/Aus-Schalter.
 - **Bestätigung:** Jede Person sieht die Ankündigung, bis sie bestätigt. Optional „Remind me later“ mit einstellbarer Wartezeit. „Show again“ zeigt sie allen erneut.
-- **Übersicht:** Suche über Titel, Text, Projekt-Keys und Gruppen, Filter nach Status (Live, Scheduled, Disabled, Ended), Sortierung – standardmäßig aktive Ankündigungen oben. Spalten (Status, Created, Changed, Who gets it, Period) lassen sich ein- und ausblenden; die Auswahl wird pro Administrator gespeichert. Die Aktionen je Ankündigung liegen im Drei-Punkte-Menü am Zeilenende.
+- **Übersicht:** Suche über Titel, Text, Projekt-Keys und Gruppen, Filter nach Status (Live, Scheduled, Disabled, Ended), Sortierung – standardmäßig aktive Ankündigungen oben. Ein Klick auf eine Zeile öffnet die Ankündigung zum Bearbeiten. Spalten (Status, Created, Changed, Who gets it, Period, Acknowledgements – Anzahl der Bestätigungen, Klick öffnet die Liste) lassen sich ein- und ausblenden; die Auswahl wird pro Administrator gespeichert. Die Aktionen je Ankündigung liegen im Drei-Punkte-Menü am Zeilenende.
 - **Auswertung:** Liste der Personen, die bestätigt haben, mit Zeitpunkt und CSV-Export.
+- **My announcements:** Seite im Apps-Menü für jeden Jira-Benutzer mit den selbst bestätigten Ankündigungen (Titel, Bestätigungsdatum, Suche); ein Klick zeigt den Text noch einmal. Gelöschte Ankündigungen fehlen dort, angezeigt wird immer der aktuelle Text.
 - Nur Jira-Administratoren können Ankündigungen verwalten (serverseitig bei jedem Aufruf geprüft).
 
 ## Technik und Grenzen

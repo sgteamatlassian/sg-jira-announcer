@@ -397,7 +397,8 @@ const COLUMNS = [
   { id: 'created', label: 'Created' },
   { id: 'updated', label: 'Changed' },
   { id: 'audience', label: 'Who gets it' },
-  { id: 'period', label: 'Period' }
+  { id: 'period', label: 'Period' },
+  { id: 'acks', label: 'Acknowledgements' }
 ];
 
 // ---- Page -------------------------------------------------------------------
@@ -410,6 +411,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState({ status: 'all', search: '', sort: 'active' });
   const [columns, setColumns] = useState(COLUMNS.map(column => column.id));
+  const [ackCounts, setAckCounts] = useState(null); // null = not loaded yet
 
   async function refresh() {
     try {
@@ -418,6 +420,14 @@ function App() {
     } catch (failure) { setError(message(failure)); }
   }
   useEffect(() => { refresh(); }, []);
+  // Counting reads every receipt, so it only runs while the column is shown.
+  const showCounts = columns.includes('acks');
+  useEffect(() => {
+    if (!showCounts || announcements == null) return undefined;
+    let stale = false;
+    invoke('ackCounts').then(result => { if (!stale) setAckCounts(result.counts); }).catch(failure => { console.error('SG Announcer: counting failed', failure); if (!stale) setAckCounts({}); });
+    return () => { stale = true; };
+  }, [showCounts, announcements]);
 
   async function act(name, announcement, done) {
     setError(''); setNotice('');
@@ -501,18 +511,30 @@ function App() {
                     <tbody>
                       {rows.map(({ announcement, status }) => {
                         const { label, tone } = STATUSES.find(option => option.id === status);
+                        const edit = () => { setNotice(''); setScreen({ name: 'edit', announcement }); };
                         const cells = {
                           status: <td key="status"><span className={`lozenge ${tone}`}>{label}</span></td>,
                           created: <td key="created" className="nowrap">{formatDate(announcement.createdAt)}</td>,
                           updated: <td key="updated" className="nowrap">{formatDate(announcement.updatedAt)}</td>,
                           audience: <td key="audience">{audience(announcement)}</td>,
+                          acks: (
+                            <td key="acks" className="nowrap">
+                              {ackCounts == null ? <span className="muted">…</span>
+                                : ackCounts[announcement.id] == null ? <span className="muted" title="Could not be counted">?</span>
+                                  : (
+                                    <button type="button" className="link count-link" title="Show who confirmed"
+                                      onClick={event => { event.stopPropagation(); setScreen({ name: 'readers', announcement }); }}>{ackCounts[announcement.id]}</button>
+                                  )}
+                            </td>
+                          ),
                           period: <td key="period">{announcement.startAt || announcement.endAt ? `${formatDate(announcement.startAt)} → ${formatDate(announcement.endAt)}` : 'No limit'}</td>
                         };
                         return (
-                          <tr key={announcement.id}>
+                          <tr key={announcement.id} className="clickable" tabIndex={0} title="Edit this announcement" onClick={edit}
+                            onKeyDown={event => { if (event.key === 'Enter' && event.target === event.currentTarget) edit(); }}>
                             <td><strong>{announcement.title}</strong><br /><span className="muted">{announcement.display === 'flag' ? 'Flag' : 'Popup'}</span></td>
                             {COLUMNS.filter(column => columns.includes(column.id)).map(column => cells[column.id])}
-                            <td className="row-menu">
+                            <td className="row-menu" onClick={event => event.stopPropagation()}>
                               <Popover className="right" title={`Actions for ${announcement.title}`} label="⋯">
                                 {close => {
                                   const item = (text, action, className = '') => (
@@ -520,7 +542,7 @@ function App() {
                                   );
                                   return (
                                     <div role="menu">
-                                      {item('Edit', () => { setNotice(''); setScreen({ name: 'edit', announcement }); })}
+                                      {item('Edit', edit)}
                                       {item(announcement.enabled ? 'Disable' : 'Enable', () => toggle(announcement))}
                                       {item('Confirmed by', () => setScreen({ name: 'readers', announcement }))}
                                       {item('Show again to everyone', () => { if (window.confirm(`Show “${announcement.title}” again to everyone who has already confirmed it?`)) act('resetAcknowledgements', announcement, 'The announcement is shown to everyone again.'); })}

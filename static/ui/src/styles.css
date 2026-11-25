@@ -168,3 +168,10 @@ main { min-height: 460px; }
 .menu-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--subtle); padding: 4px 10px 6px; }
 .menu-check { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: 500; white-space: nowrap; }
 .menu-check:hover { background: var(--neutral); }
+
+/* ---- Clickable rows ---- */
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td, tr.clickable:focus-visible td { background: var(--ds-background-neutral-subtle-hovered, #f1f4f9); }
+tr.clickable:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.count-link { font-weight: 700; padding: 2px 6px; }
+.changed-note { margin-left: 8px; vertical-align: middle; }

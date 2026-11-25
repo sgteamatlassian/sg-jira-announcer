@@ -70,8 +70,30 @@ test('announcements that do not fit into one storage value are rejected', () => 
 });
 
 test('saved overview columns: default when nothing valid is stored, fixed order otherwise', () => {
-  assert.deepEqual(core.normalizeColumns(undefined), ['status', 'created', 'audience', 'period']);
-  assert.deepEqual(core.normalizeColumns(['period', 'bogus']), ['status', 'created', 'audience', 'period']);
-  assert.deepEqual(core.normalizeColumns(['period', 'updated', 'status']), ['status', 'updated', 'period']);
-  assert.deepEqual(core.normalizeColumns([]), []);
+  const all = ['status', 'created', 'audience', 'period', 'acks'];
+  assert.deepEqual(core.normalizeColumns(undefined), all);
+  assert.deepEqual(core.normalizeColumns(['period', 'bogus']), all);
+  assert.deepEqual(core.normalizeColumns(['period', 'updated', 'status'], core.COLUMNS), ['status', 'updated', 'period']);
+  assert.deepEqual(core.normalizeColumns([], core.COLUMNS), []);
+});
+
+test('a default column added after someone saved their choice shows up for them', () => {
+  assert.deepEqual(core.normalizeColumns(['status', 'period']), ['status', 'period', 'acks']);
+  assert.deepEqual(core.normalizeColumns(['status', 'period'], ['status', 'created', 'updated', 'audience', 'period']), ['status', 'period', 'acks']);
+  assert.deepEqual(core.normalizeColumns(['status'], core.COLUMNS), ['status']);
+});
+
+test('"My announcements": confirmed ones only, newest confirmation first, deleted ones gone', () => {
+  const a = make({ title: 'A' });
+  const b = { ...make({ title: 'B' }), id: '22222222-2222-4222-8222-222222222222', rev: 3, enabled: false };
+  const c = { ...make({ title: 'C' }), id: '33333333-3333-4333-8333-333333333333' };
+  const state = { acks: {
+    [a.id]: { rev: 1, at: '2026-11-01T10:00:00.000Z' },
+    [b.id]: { rev: 2, at: '2026-11-20T10:00:00.000Z' },
+    'deleted-announcement': { rev: 1, at: '2026-11-22T10:00:00.000Z' }
+  } };
+  const mine = core.confirmedBy([a, b, c], state);
+  assert.deepEqual(mine.map(item => [item.title, item.changed]), [['B', true], ['A', false]]);
+  assert.equal('groups' in mine[0], false);
+  assert.deepEqual(core.confirmedBy([a], null), []);
 });

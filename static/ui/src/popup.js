@@ -11,7 +11,8 @@ function element(tag, className, text) {
   return node;
 }
 
-export function showPopup({ announcement, preview = false }) {
+// `closeOnly` + `note`: a read-only view ("My announcements") with one Close button.
+export function showPopup({ announcement, preview = false, closeOnly = false, note = '' }) {
   view.theme.enable().catch(() => {});
   const root = document.getElementById('root');
   const popup = element('div', `popup popup-${announcement.appearance}`);
@@ -25,6 +26,16 @@ export function showPopup({ announcement, preview = false }) {
   popup.append(body);
 
   const footer = element('footer', 'popup-footer');
+  if (closeOnly) {
+    if (note) footer.append(element('span', 'muted popup-note', note));
+    const close = element('button', 'primary', 'Close');
+    close.addEventListener('click', () => view.close({ action: 'close' }));
+    footer.append(close);
+    popup.append(footer);
+    root.replaceChildren(popup);
+    close.focus();
+    return;
+  }
   if (preview) footer.append(element('span', 'muted popup-note', 'Preview – nothing is recorded.'));
   if (announcement.allowSnooze) {
     const later = element('button', 'subtle', 'Remind me later');

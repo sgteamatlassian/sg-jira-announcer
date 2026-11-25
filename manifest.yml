@@ -6,6 +6,15 @@ modules:
         function: resolver
       title: SG Announcer
       layout: blank
+  # Apps menu entry for every Jira user: the announcements they have confirmed.
+  jira:globalPage:
+    - key: sg-announcer-mine
+      resource: ui
+      resolver:
+        function: resolver
+      title: My announcements
+      route: my-announcements
+      layout: blank
   # Runs invisibly on every Jira page and opens the announcement popup.
   jira:globalBackgroundScript:
     - key: sg-announcer-background

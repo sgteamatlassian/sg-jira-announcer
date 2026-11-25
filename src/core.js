@@ -130,15 +130,34 @@ function matchesGroups(announcement, groupIds) {
   return announcement.groups.some(group => groupIds.includes(group.id));
 }
 
-// Optional columns of the admin overview; the title and the row menu are always there.
-const COLUMNS = ['status', 'created', 'updated', 'audience', 'period'];
-const DEFAULT_COLUMNS = ['status', 'created', 'audience', 'period'];
+// The announcements a person has confirmed, newest confirmation first, for
+// their "My announcements" page. Deleted announcements are gone; `changed`
+// says that the text was shown again to everyone after they confirmed it.
+function confirmedBy(announcements, state) {
+  const acks = state?.acks || {};
+  return announcements
+    .filter(a => acks[a.id])
+    .map(a => ({
+      id: a.id, title: a.title, body: a.body, size: a.size, appearance: a.appearance,
+      confirmedAt: acks[a.id].at || null, changed: acks[a.id].rev !== a.rev
+    }))
+    .sort((a, b) => (Date.parse(b.confirmedAt) || 0) - (Date.parse(a.confirmedAt) || 0));
+}
 
-// A person's saved column choice, in the fixed column order. Anything that is
-// not a valid choice (nothing saved yet, unknown ids) gives the default.
-function normalizeColumns(value) {
+// Optional columns of the admin overview; the title and the row menu are always there.
+const COLUMNS = ['status', 'created', 'updated', 'audience', 'period', 'acks'];
+const DEFAULT_COLUMNS = ['status', 'created', 'audience', 'period', 'acks'];
+// The columns that existed when choices were first saved without a `known` list.
+const FIRST_COLUMNS = ['status', 'created', 'updated', 'audience', 'period'];
+
+// A person's saved column choice, in the fixed column order. `known` is the
+// list of columns that existed when they chose: a default column added later
+// shows up for them too. Anything invalid (nothing saved, unknown ids) gives
+// the default.
+function normalizeColumns(value, known) {
   if (!Array.isArray(value) || value.some(id => !COLUMNS.includes(id))) return [...DEFAULT_COLUMNS];
-  return COLUMNS.filter(id => value.includes(id));
+  const seen = Array.isArray(known) ? known : FIRST_COLUMNS;
+  return COLUMNS.filter(id => value.includes(id) || (!seen.includes(id) && DEFAULT_COLUMNS.includes(id)));
 }
 
 // What the browser gets: no audit fields, no group list.
@@ -152,5 +171,5 @@ function publicView(a) {
 
 module.exports = {
   LIMITS, PROJECT_KEY, ID, normalizeAnnouncement, normalizeProjects, assertFits,
-  isLive, openFor, matchesGroups, publicView, COLUMNS, normalizeColumns
+  isLive, openFor, matchesGroups, publicView, confirmedBy, COLUMNS, normalizeColumns
 };

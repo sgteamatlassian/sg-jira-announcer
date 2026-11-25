@@ -103,20 +103,28 @@ resolver.define('snooze', async ({ payload, context }) => {
   return { ok: true };
 });
 
+// "My announcements": what the viewer has confirmed so far.
+resolver.define('mine', async ({ context }) => {
+  const accountId = context.accountId;
+  if (!accountId) return { items: [] };
+  const [all, state] = await Promise.all([loadAll(), kvs.get(userKey(accountId))]);
+  return { items: core.confirmedBy(all, state) };
+});
+
 // ---- Jira administrators (admin page) ---------------------------------------
 
 const prefsKey = accountId => `prefs:${accountId}`;
 
 admin('list', async (payload, context) => {
   const [announcements, prefs] = await Promise.all([loadAll(), kvs.get(prefsKey(context.accountId))]);
-  return { announcements, limits: core.LIMITS, columns: core.normalizeColumns(prefs?.columns) };
+  return { announcements, limits: core.LIMITS, columns: core.normalizeColumns(prefs?.columns, prefs?.known) };
 });
 
 // The columns this administrator wants to see in the overview.
 admin('saveColumns', async ({ columns }, context) => {
   if (!Array.isArray(columns) || columns.some(id => !core.COLUMNS.includes(id))) throw new Error('Invalid columns.');
-  const saved = core.normalizeColumns(columns);
-  await kvs.set(prefsKey(context.accountId), { columns: saved });
+  const saved = core.normalizeColumns(columns, core.COLUMNS);
+  await kvs.set(prefsKey(context.accountId), { columns: saved, known: core.COLUMNS });
   return { columns: saved };
 });
 
@@ -131,6 +139,33 @@ admin('save', async ({ announcement }, context) => {
   core.assertFits(all);
   await kvs.set(ANNOUNCEMENTS, all);
   return { announcement: saved };
+});
+
+// How many people acknowledged the current revision of each announcement.
+// Counted from the read receipts, so it is exact; an announcement that cannot
+// be counted within the time budget is reported as null.
+admin('ackCounts', async () => {
+  const all = await loadAll();
+  const deadline = Date.now() + 15000;
+  const counts = {};
+  const queue = [...all];
+  const worker = async () => {
+    for (let a = queue.shift(); a; a = queue.shift()) {
+      let count = 0;
+      let cursor;
+      do {
+        if (Date.now() > deadline) { count = null; break; }
+        let query = kvs.query().where('key', WhereConditions.beginsWith(`read:${a.id}:`)).limit(100);
+        if (cursor) query = query.cursor(cursor);
+        const page = await query.getMany();
+        count += page.results.filter(entry => entry.value.rev === a.rev).length;
+        cursor = page.nextCursor;
+      } while (cursor);
+      counts[a.id] = count;
+    }
+  };
+  await Promise.all(Array.from({ length: 5 }, worker));
+  return { counts };
 });
 
 // Shows the announcement again to everyone who has already acknowledged it.

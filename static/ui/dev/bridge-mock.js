@@ -1,5 +1,5 @@
 // Stand-in for @forge/bridge, for looking at the UI outside Jira:
-//   MOCK_BRIDGE=1 npx vite        then open /?role=admin (default) or /?role=popup
+//   MOCK_BRIDGE=1 npx vite        then open /?role=admin (default), /?role=mine or /?role=popup
 // Data lives in memory only. Never part of the production build.
 const role = new URLSearchParams(location.search).get('role') || 'admin';
 const PROJECTS = { SGSD: 'SG Service Desk', AS: 'App Support', SL: 'Swisslos', JRR: 'Release Reports', OPS: 'Operations' };
@@ -18,9 +18,10 @@ announcements.push(
   { ...announcements[0], id: '44444444-4444-4444-8444-444444444444', title: 'Password policy change', groups: [], projects: [], createdAt: days(-10), updatedAt: days(-10) },
   { ...announcements[0], id: '55555555-5555-4555-8555-555555555555', title: 'Summer freeze', groups: [], projects: [], endAt: days(-60), createdAt: days(-90), updatedAt: days(-90) }
 );
-let columns = JSON.parse(localStorage.getItem('mock-columns') || 'null') || ['status', 'created', 'audience', 'period'];
+let columns = JSON.parse(localStorage.getItem('mock-columns') || 'null') || ['status', 'created', 'audience', 'period', 'acks'];
 const handlers = {
   list: () => ({ announcements, columns, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
+  ackCounts: () => ({ counts: Object.fromEntries(announcements.map((a, i) => [a.id, i === 3 ? null : i * 17])) }),
   saveColumns: payload => { columns = payload.columns; localStorage.setItem('mock-columns', JSON.stringify(columns)); return { columns }; },
   save: ({ announcement }) => {
     const saved = { rev: 1, ...announcement, id: announcement.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
@@ -32,14 +33,15 @@ const handlers = {
   readers: () => ({ readers: [{ accountId: 'a1', displayName: 'Jane Doe', at: new Date().toISOString() }], cursor: null }),
   groups: ({ query }) => ({ groups: GROUPS.filter(g => g.name.includes(query.toLowerCase())) }),
   checkProjects: ({ keys }) => ({ found: keys.filter(k => PROJECTS[k]).map(key => ({ key, name: PROJECTS[key] })), unknown: keys.filter(k => !PROJECTS[k]) }),
-  pending: () => ({ items: announcements })
+  pending: () => ({ items: announcements }),
+  mine: () => ({ items: announcements.slice(0, 3).map((a, i) => ({ id: a.id, title: a.title, body: a.body, size: a.size, appearance: a.appearance, confirmedAt: days(-i * 9), changed: i === 1 })) })
 };
 export const invoke = async (name, payload = {}) => structuredClone(handlers[name](payload));
 export const view = {
   getContext: async () => ({
     extension: role === 'popup'
       ? { modal: JSON.parse(sessionStorage.getItem('mock-modal') || 'null') || { announcement: announcements[0], preview: true } }
-      : { type: 'jira:adminPage' }
+      : { type: role === 'mine' ? 'jira:globalPage' : 'jira:adminPage' }
   }),
   theme: { enable: async () => {} },
   close: payload => window.parent.postMessage({ mockClose: payload || null }, '*')
