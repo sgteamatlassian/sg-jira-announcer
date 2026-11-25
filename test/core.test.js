@@ -49,16 +49,33 @@ test('acknowledged and snoozed announcements are not shown, until the revision c
   assert.equal(core.openFor([a], { snooze: { [a.id]: { rev: 1, until: NOW } } }, NOW).length, 1);
 });
 
-test('group targeting: no groups means everyone', () => {
-  assert.equal(core.matchesGroups(make(), []), true);
-  const a = make({ groups: [{ id: 'g1', name: 'Agents' }] });
-  assert.equal(core.matchesGroups(a, ['g2']), false);
-  assert.equal(core.matchesGroups(a, ['g2', 'g1']), true);
+test('audience: nobody named means everyone; otherwise a named person or a group member', () => {
+  assert.equal(core.matchesAudience(make(), 'me', []), true);
+  const byGroup = make({ groups: [{ id: 'g1', name: 'Agents' }] });
+  assert.equal(core.matchesAudience(byGroup, 'me', ['g2']), false);
+  assert.equal(core.matchesAudience(byGroup, 'me', ['g2', 'g1']), true);
+  const byPerson = make({ users: [{ id: '557058:abc-1', name: 'Me' }] });
+  assert.equal(core.matchesAudience(byPerson, '557058:abc-1', []), true);
+  assert.equal(core.matchesAudience(byPerson, 'someone-else', ['g1']), false);
+  const both = make({ groups: [{ id: 'g1', name: 'Agents' }], users: [{ id: 'me', name: 'Me' }] });
+  assert.equal(core.matchesAudience(both, 'me', []), true);
+  assert.equal(core.matchesAudience(both, 'other', ['g1']), true);
+  assert.equal(core.matchesAudience(both, 'other', []), false);
+  // Records saved before people could be named.
+  const { users, ...old } = make();
+  assert.equal(core.matchesAudience(old, 'me', []), true);
+});
+
+test('named people are validated and de-duplicated', () => {
+  assert.deepEqual(make({ users: [{ id: 'a:1', name: 'A' }, { id: 'a:1', name: 'A again' }] }).users, [{ id: 'a:1', name: 'A' }]);
+  assert.throws(() => make({ users: [{ id: 'not valid!', name: 'X' }] }), /Invalid person/);
+  assert.deepEqual(make().users, []);
 });
 
 test('the browser never receives the group list or audit fields', () => {
-  const view = core.publicView(make({ groups: [{ id: 'g1', name: 'Agents' }], projects: ['AS'] }));
+  const view = core.publicView(make({ groups: [{ id: 'g1', name: 'Agents' }], users: [{ id: 'u1', name: 'U' }], projects: ['AS'] }));
   assert.equal('groups' in view, false);
+  assert.equal('users' in view, false);
   assert.equal('updatedBy' in view, false);
   assert.deepEqual(view.projects, ['AS']);
 });

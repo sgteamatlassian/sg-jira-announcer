@@ -14,6 +14,7 @@ const LIMITS = {
   body: 10000,
   buttonText: 40,
   groups: 100,
+  users: 200,
   projects: 2000,
   announcements: 100,
   // One Forge storage value may hold 240 KiB; all announcements share one key.
@@ -69,6 +70,21 @@ function normalizeGroups(value) {
   return groups;
 }
 
+function normalizeUsers(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new Error('People must be a list.');
+  const users = [];
+  const seen = new Set();
+  for (const entry of value) {
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+    if (!/^[a-zA-Z0-9:_-]{1,128}$/.test(id) || name.length > 300) throw new Error('Invalid person.');
+    if (!seen.has(id)) { seen.add(id); users.push({ id, name: name || id }); }
+  }
+  if (users.length > LIMITS.users) throw new Error(`At most ${LIMITS.users} people per announcement.`);
+  return users;
+}
+
 // Returns the stored form of an announcement. `existing` is the stored record
 // when editing: id, revision and creation time are never taken from the client.
 function normalizeAnnouncement(input, { existing = null, id, now, actor }) {
@@ -93,6 +109,7 @@ function normalizeAnnouncement(input, { existing = null, id, now, actor }) {
     startAt,
     endAt,
     groups: normalizeGroups(input.groups),
+    users: normalizeUsers(input.users),
     projects: normalizeProjects(input.projects),
     createdAt: existing ? existing.createdAt : stamp,
     updatedAt: stamp,
@@ -125,9 +142,13 @@ function openFor(announcements, state, now) {
     && !(snooze[a.id] && snooze[a.id].rev === a.rev && now < snooze[a.id].until));
 }
 
-function matchesGroups(announcement, groupIds) {
-  if (!announcement.groups.length) return true;
-  return announcement.groups.some(group => groupIds.includes(group.id));
+// Who gets it: nobody named = everyone. Otherwise the person must be one of
+// the named people or a member of one of the groups. (Announcements saved
+// before people could be named have no `users`.)
+function matchesAudience(announcement, accountId, groupIds) {
+  const users = announcement.users || [];
+  if (!announcement.groups.length && !users.length) return true;
+  return users.some(user => user.id === accountId) || announcement.groups.some(group => groupIds.includes(group.id));
 }
 
 // The announcements a person has confirmed, newest confirmation first, for
@@ -171,5 +192,5 @@ function publicView(a) {
 
 module.exports = {
   LIMITS, PROJECT_KEY, ID, normalizeAnnouncement, normalizeProjects, assertFits,
-  isLive, openFor, matchesGroups, publicView, confirmedBy, COLUMNS, normalizeColumns
+  isLive, openFor, matchesAudience, publicView, confirmedBy, COLUMNS, normalizeColumns
 };

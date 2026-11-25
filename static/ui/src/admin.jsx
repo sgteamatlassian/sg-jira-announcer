@@ -8,7 +8,7 @@ import './styles.css';
 
 const EMPTY = {
   title: '', body: '', display: 'dialog', size: 'medium', appearance: 'info', buttonText: 'Got it',
-  allowSnooze: false, snoozeHours: 24, enabled: false, startAt: null, endAt: null, groups: [], projects: []
+  allowSnooze: false, snoozeHours: 24, enabled: false, startAt: null, endAt: null, groups: [], users: [], projects: []
 };
 const CHIP_PREVIEW = 60;
 
@@ -23,7 +23,11 @@ const fromLocalInput = value => (value ? new Date(value).toISOString() : null);
 const message = error => error?.message || String(error);
 
 function audience(announcement) {
-  const who = announcement.groups.length ? `Members of ${announcement.groups.map(group => group.name).join(', ')}` : 'Everyone';
+  const people = (announcement.users || []).map(user => user.name);
+  const who = [
+    announcement.groups.length ? `Members of ${announcement.groups.map(group => group.name).join(', ')}` : '',
+    people.length > 3 ? `${people.length} people` : people.join(', ')
+  ].filter(Boolean).join(' + ') || 'Everyone';
   const count = announcement.projects.length;
   const where = !count ? 'on every Jira page'
     : count <= 4 ? `inside ${announcement.projects.join(', ')}`
@@ -157,7 +161,9 @@ function ProjectsField({ projects, onChange, limit }) {
 
 // ---- Groups -----------------------------------------------------------------
 
-function GroupsField({ groups, onChange }) {
+// Search-and-pick for groups and people: `source` is the resolver that finds
+// matches ({ [source]: [{ id, name }] }).
+function PickerField({ items, onChange, source, placeholder, emptyText, noMatchText }) {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState(null);
   const [error, setError] = useState('');
@@ -166,31 +172,31 @@ function GroupsField({ groups, onChange }) {
     let stale = false;
     const timer = setTimeout(async () => {
       try {
-        const result = await invoke('groups', { query });
-        if (!stale) { setMatches(result.groups); setError(''); }
+        const result = await invoke(source, { query });
+        if (!stale) { setMatches(result[source]); setError(''); }
       } catch (failure) { if (!stale) setError(message(failure)); }
     }, 250);
     return () => { stale = true; clearTimeout(timer); };
   }, [query]);
-  const available = (matches || []).filter(group => !groups.some(chosen => chosen.id === group.id));
+  const available = (matches || []).filter(match => !items.some(chosen => chosen.id === match.id));
   return (
     <div>
-      <input value={query} placeholder="Search groups…" onChange={event => setQuery(event.target.value)} />
+      <input value={query} placeholder={placeholder} onChange={event => setQuery(event.target.value)} />
       {error && <p className="error">{error}</p>}
       {matches && (
         <div className="matches">
-          {available.length === 0 ? <span className="muted">No further groups found.</span> : available.map(group => (
-            <button type="button" key={group.id} onClick={() => { onChange([...groups, group]); setQuery(''); }}>+ {group.name}</button>
+          {available.length === 0 ? <span className="muted">{noMatchText}</span> : available.map(match => (
+            <button type="button" key={match.id} onClick={() => { onChange([...items, match]); setQuery(''); }}>+ {match.name}</button>
           ))}
         </div>
       )}
-      {groups.length === 0
-        ? <p className="muted">No groups selected – everyone gets the announcement.</p>
+      {items.length === 0
+        ? <p className="muted">{emptyText}</p>
         : (
           <div className="chips">
-            {groups.map(group => (
-              <span className="chip" key={group.id}>{group.name}
-                <button type="button" aria-label={`Remove ${group.name}`} onClick={() => onChange(groups.filter(other => other.id !== group.id))}>×</button>
+            {items.map(item => (
+              <span className="chip" key={item.id}>{item.name}
+                <button type="button" aria-label={`Remove ${item.name}`} onClick={() => onChange(items.filter(other => other.id !== item.id))}>×</button>
               </span>
             ))}
           </div>
@@ -243,11 +249,15 @@ function Editor({ initial, limits, onSaved, onCancel }) {
 
       <section>
         <h3>Who gets it</h3>
-        <p className="muted">Both conditions apply together: the person must be in one of the groups <em>and</em> be inside one of the projects.</p>
+        <p className="muted">Without groups and people, everyone gets it. Otherwise only members of the groups and the named people – and always only inside the projects, if any are selected.</p>
         <h4>Projects</h4>
         <ProjectsField projects={form.projects} limit={limits.projects} onChange={projects => set({ projects })} />
         <h4>Groups</h4>
-        <GroupsField groups={form.groups} onChange={groups => set({ groups })} />
+        <PickerField items={form.groups} onChange={groups => set({ groups })} source="groups" placeholder="Search groups…"
+          emptyText="No groups selected." noMatchText="No further groups found." />
+        <h4>People</h4>
+        <PickerField items={form.users || []} onChange={users => set({ users })} source="users" placeholder="Search people by name…"
+          emptyText="No people selected." noMatchText="No further people found." />
       </section>
 
       <section>

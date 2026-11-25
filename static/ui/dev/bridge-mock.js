@@ -8,7 +8,7 @@ let announcements = [{
   id: '11111111-1111-4111-8111-111111111111', rev: 1, title: 'Maintenance window on Saturday',
   body: 'Jira will be **read-only** on Saturday from 08:00 to 10:00.\n\n- Save your work before 08:00\n- Details: [status page](https://example.com/status)',
   display: 'dialog', size: 'medium', appearance: 'warning', buttonText: 'Got it', allowSnooze: true, snoozeHours: 24,
-  enabled: true, startAt: null, endAt: null, groups: [GROUPS[1]], projects: ['SGSD', 'AS', 'SL'],
+  enabled: true, startAt: null, endAt: null, groups: [GROUPS[1]], users: [], projects: ['SGSD', 'AS', 'SL'],
   createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: 'me'
 }];
 const days = n => new Date(Date.now() + n * 86400000).toISOString();
@@ -31,6 +31,7 @@ const handlers = {
   remove: ({ id }) => { announcements = announcements.filter(a => a.id !== id); return { ok: true }; },
   resetAcknowledgements: () => ({}),
   readers: () => ({ readers: [{ accountId: 'a1', displayName: 'Jane Doe', at: new Date().toISOString() }], cursor: null }),
+  users: ({ query }) => ({ users: [{ id: 'u:1', name: 'Jane Doe' }, { id: 'u:2', name: 'John Smith' }].filter(u => u.name.toLowerCase().includes(query.toLowerCase())) }),
   groups: ({ query }) => ({ groups: GROUPS.filter(g => g.name.includes(query.toLowerCase())) }),
   checkProjects: ({ keys }) => ({ found: keys.filter(k => PROJECTS[k]).map(key => ({ key, name: PROJECTS[key] })), unknown: keys.filter(k => !PROJECTS[k]) }),
   pending: () => ({ items: announcements }),

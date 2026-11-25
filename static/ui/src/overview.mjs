@@ -25,7 +25,7 @@ export const SORTS = [
 const created = announcement => Date.parse(announcement.createdAt) || 0;
 
 // `status` is a status id or 'all'; `search` matches title, text, project
-// keys and group names. The default order puts live announcements on top,
+// keys, group names and named people. The default order puts live announcements on top,
 // then scheduled, disabled and ended ones - newest first within each.
 export function filterAndSort(announcements, { status = 'all', search = '', sort = 'active' } = {}, now = Date.now()) {
   const words = search.toLowerCase().split(/\s+/).filter(Boolean);
@@ -34,7 +34,7 @@ export function filterAndSort(announcements, { status = 'all', search = '', sort
     .filter(row => status === 'all' || row.status === status)
     .filter(({ announcement: a }) => {
       if (!words.length) return true;
-      const haystack = [a.title, a.body, ...(a.projects || []), ...(a.groups || []).map(group => group.name)].join('\n').toLowerCase();
+      const haystack = [a.title, a.body, ...(a.projects || []), ...(a.groups || []).map(group => group.name), ...(a.users || []).map(user => user.name)].join('\n').toLowerCase();
       return words.every(word => haystack.includes(word));
     });
   const newest = (a, b) => created(b.announcement) - created(a.announcement);

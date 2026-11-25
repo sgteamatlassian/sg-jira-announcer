@@ -8,7 +8,7 @@ Forge-App für Jira Cloud: Ankündigungen, die Jira-Benutzern als Popup angezeig
 - **Anzeige** als Popup (Dialog, drei Größen) oder als Flag (Hinweis unten links).
 - **Zielgruppe – Projekte:** Die Ankündigung erscheint nur innerhalb der gewählten Projekte (Ticketansicht, Boards, Queues, Projektseiten). Ohne Projektliste erscheint sie auf jeder Jira-Seite.
   - **CSV-Import der Projekt-Keys:** ein Key pro Zeile, eine Zeile mit mehreren Keys oder eine Tabelle mit einer Spalte „Key“ / „Project key“ / „Projektschlüssel“ (sonst erste Spalte). Trennzeichen Komma, Semikolon oder Tab. Die Keys werden gegen Jira geprüft; unbekannte, doppelte und ungültige Einträge werden vor der Übernahme angezeigt. Wahlweise zur Liste hinzufügen oder die Liste ersetzen. Bis zu 2000 Projekte pro Ankündigung.
-- **Zielgruppe – Gruppen:** optional nur für Mitglieder bestimmter Jira-Gruppen. Projekte und Gruppen gelten gemeinsam (UND).
+- **Zielgruppe – Gruppen und Personen:** optional nur für Mitglieder bestimmter Jira-Gruppen und/oder einzeln benannte Personen (wer in einer der Gruppen ist oder benannt wurde, bekommt die Ankündigung). Ohne Gruppen und Personen bekommen sie alle. Die Projektliste gilt zusätzlich (UND).
 - **Zeitraum:** optional „anzeigen ab“ / „anzeigen bis“, dazu ein Ein/Aus-Schalter.
 - **Bestätigung:** Jede Person sieht die Ankündigung, bis sie bestätigt. Optional „Remind me later“ mit einstellbarer Wartezeit. „Show again“ zeigt sie allen erneut.
 - **Übersicht:** Suche über Titel, Text, Projekt-Keys und Gruppen, Filter nach Status (Live, Scheduled, Disabled, Ended), Sortierung – standardmäßig aktive Ankündigungen oben. Ein Klick auf eine Zeile öffnet die Ankündigung zum Bearbeiten. Spalten (Status, Created, Changed, Who gets it, Period, Acknowledgements – Anzahl der Bestätigungen, Klick öffnet die Liste) lassen sich ein- und ausblenden; die Auswahl wird pro Administrator gespeichert. Die Aktionen je Ankündigung liegen im Drei-Punkte-Menü am Zeilenende.
@@ -22,7 +22,7 @@ Forge-App für Jira Cloud: Ankündigungen, die Jira-Benutzern als Popup angezeig
 - Das geöffnete Projekt wird auf Ticketansichten von Jira geliefert, sonst aus der URL gelesen (`/browse/KEY-1`, `/projects/KEY/…`). Auf Seiten ohne Projektbezug (Dashboards, Filter) erscheinen projektbezogene Ankündigungen nicht.
 - Pro Seitenaufruf ein Resolver-Aufruf; Gruppenmitgliedschaften werden 10 Minuten zwischengespeichert, daher wirken Gruppenänderungen mit dieser Verzögerung.
 - Alle Ankündigungen liegen in einem Forge-Speicherwert (max. 100 Ankündigungen, zusammen ca. 200 KB).
-- Kein Banner und keine Vollbildseite (in Forge nicht möglich), keine Zielgruppe nach einzelnen Benutzern oder Projektrollen, keine Statuspage-/Slack-Anbindung.
+- Kein Banner und keine Vollbildseite (in Forge nicht möglich), keine Zielgruppe nach Projektrollen, keine Statuspage-/Slack-Anbindung.
 
 ## Lokale Prüfung
 

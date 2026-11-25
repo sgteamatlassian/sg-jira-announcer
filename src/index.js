@@ -30,7 +30,8 @@ async function ensureAdmin() {
   if (!result.permissions?.ADMINISTER?.havePermission) throw new Error('Only Jira administrators can use this feature.');
 }
 
-const loadAll = async () => (await kvs.get(ANNOUNCEMENTS)) || [];
+// `users` did not exist in the first version; older records get an empty list.
+const loadAll = async () => ((await kvs.get(ANNOUNCEMENTS)) || []).map(a => ({ ...a, users: a.users || [] }));
 const userKey = accountId => `user:${accountId}`;
 const readKey = (id, accountId) => `read:${id}:${accountId}`;
 
@@ -68,11 +69,11 @@ resolver.define('pending', async ({ context }) => {
   if (!all.some(a => core.isLive(a, now))) return { items: [] };
   const state = (await kvs.get(userKey(accountId))) || {};
   let open = core.openFor(all, state, now);
+  let groupIds = [];
   if (open.some(a => a.groups.length)) {
-    let ids = [];
-    try { ids = await groupIdsOf(accountId, state, now); } catch (error) { console.error('Group lookup failed', error.message); }
-    open = open.filter(a => core.matchesGroups(a, ids));
+    try { groupIds = await groupIdsOf(accountId, state, now); } catch (error) { console.error('Group lookup failed', error.message); }
   }
+  open = open.filter(a => core.matchesAudience(a, accountId, groupIds));
   return { items: open.map(core.publicView) };
 });
 
@@ -222,6 +223,17 @@ admin('groups', async ({ query }) => {
   const params = new URLSearchParams({ query: typeof query === 'string' ? query.slice(0, 100) : '', maxResults: '20' });
   const result = await jira(route`/rest/api/3/groups/picker?${params}`, { asUser: true });
   return { groups: (result.groups || []).map(group => ({ id: group.groupId, name: group.name })) };
+});
+
+admin('users', async ({ query }) => {
+  const text = typeof query === 'string' ? query.trim().slice(0, 100) : '';
+  if (!text) return { users: [] };
+  const params = new URLSearchParams({ query: text, maxResults: '20' });
+  const result = await jira(route`/rest/api/3/user/search?${params}`, { asUser: true });
+  return {
+    users: (result || []).filter(user => user.accountType === 'atlassian' && user.active !== false)
+      .map(user => ({ id: user.accountId, name: user.displayName }))
+  };
 });
 
 // Checks up to 50 project keys (one chunk of a CSV import) against Jira, with
