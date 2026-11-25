@@ -1,0 +1,36 @@
+modules:
+  jira:adminPage:
+    - key: sg-announcer-admin
+      resource: ui
+      resolver:
+        function: resolver
+      title: SG Announcer
+      layout: blank
+  # Runs invisibly on every Jira page and opens the announcement popup.
+  jira:globalBackgroundScript:
+    - key: sg-announcer-background
+      title: SG Announcer
+      resource: ui
+      resolver:
+        function: resolver
+      target:
+        resource: ui
+      experience:
+        - all
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: ui
+    path: static/ui/dist
+permissions:
+  scopes:
+    - storage:app
+    # Admin check, project lookup for the CSV import.
+    - read:jira-work
+    # Group membership of the viewer, group picker, names in the read report.
+    - read:jira-user
+app:
+  runtime:
+    name: nodejs22.x
+  id: ari:cloud:ecosystem::app/2383f733-6d4c-47b5-8c24-6cfd6cd49897

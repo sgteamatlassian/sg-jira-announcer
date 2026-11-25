@@ -1,0 +1,4 @@
+node_modules/
+static/ui/dist/
+.forge/
+.DS_Store
