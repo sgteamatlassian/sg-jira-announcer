@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke, view, Modal } from '@forge/bridge';
 import { parseProjectKeysCsv } from './csv.mjs';
-import { renderRichText } from './richtext.mjs';
+import { BodyEditor } from './editor.jsx';
 import './styles.css';
 
 const EMPTY = {
@@ -207,12 +207,6 @@ function GroupsField({ groups, onChange }) {
 
 // ---- Editor -----------------------------------------------------------------
 
-function BodyPreview({ source }) {
-  const ref = useRef(null);
-  useEffect(() => { if (ref.current) renderRichText(ref.current, source); }, [source]);
-  return <div className="richtext body-preview" ref={ref} />;
-}
-
 function Editor({ initial, limits, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -238,7 +232,7 @@ function Editor({ initial, limits, onSaved, onCancel }) {
         <div className="row">
           <button type="button" className="subtle" onClick={onCancel}>Cancel</button>
           {form.display === 'dialog' && <button type="button" onClick={preview}>Preview popup</button>}
-          <button type="submit" className="primary" disabled={busy || !form.title.trim()}>{busy ? 'Saving…' : 'Save'}</button>
+          <button type="submit" className="primary" disabled={busy || !form.title.trim() || form.body.length > limits.body}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
@@ -248,12 +242,8 @@ function Editor({ initial, limits, onSaved, onCancel }) {
         <label className="field">Title
           <input value={form.title} maxLength={limits.title} onChange={event => set({ title: event.target.value })} />
         </label>
-        <div className="columns">
-          <label className="field">Text
-            <textarea rows={9} value={form.body} maxLength={limits.body} onChange={event => set({ body: event.target.value })} />
-            <span className="muted">Blank line = new paragraph · “- ” = bullet · **bold** · *italic* · [link text](https://…)</span>
-          </label>
-          <div className="field">Preview<BodyPreview source={form.body} /></div>
+        <div className="field">Text
+          <BodyEditor value={form.body} maxLength={limits.body} onChange={body => set({ body })} />
         </div>
       </section>
 

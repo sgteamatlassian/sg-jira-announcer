@@ -85,3 +85,84 @@ export function renderRichText(container, source, onLink) {
     }
   }
 }
+
+// ---- Visual editor: DOM back to the text format ------------------------------
+// Works on anything shaped like DOM nodes (nodeType, nodeName, childNodes,
+// nodeValue, getAttribute, style), so it can be tested without a browser.
+
+const BLOCKS = new Set(['P', 'DIV', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE']);
+const isBold = node => ['B', 'STRONG'].includes(node.nodeName) || /^(bold|[6-9]00)$/.test(node.style?.fontWeight || '');
+const isItalic = node => ['I', 'EM'].includes(node.nodeName) || node.style?.fontStyle === 'italic';
+
+// Flat runs of { text, mark } - the format has no nested emphasis, the
+// outermost mark wins. A line break is the run { br: true }.
+function collectRuns(node, mark, runs) {
+  for (const child of node.childNodes || []) {
+    if (child.nodeType === 3) {
+      const text = (child.nodeValue || '').replace(/ /g, ' ').replace(/[\r\n]+/g, ' ');
+      if (!text) continue;
+      const last = runs[runs.length - 1];
+      if (last && !last.br && last.mark === mark) last.text += text; else runs.push({ text, mark });
+    } else if (child.nodeType === 1) {
+      if (child.nodeName === 'BR') { runs.push({ br: true }); continue; }
+      let next = mark;
+      if (!mark) {
+        const href = child.nodeName === 'A' ? child.getAttribute('href') || '' : '';
+        if (/^https?:\/\//i.test(href)) next = `a:${href}`;
+        else if (isBold(child)) next = 'b';
+        else if (isItalic(child)) next = 'i';
+      }
+      collectRuns(child, next, runs);
+    }
+  }
+  return runs;
+}
+
+function runsToMarkup(runs) {
+  let out = '';
+  for (const run of runs) {
+    if (run.br) { out += '\n'; continue; }
+    if (!run.mark) { out += run.text; continue; }
+    // Spaces at the edges stay outside the markers.
+    const [, lead, core, trail] = run.text.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    if (!core) { out += run.text; continue; }
+    if (run.mark === 'b') out += `${lead}**${core}**${trail}`;
+    else if (run.mark === 'i') out += `${lead}*${core}*${trail}`;
+    else {
+      const href = run.mark.slice(2);
+      out += `${lead}${core === href ? href : `[${core.replace(/[[\]]/g, '')}](${href})`}${trail}`;
+    }
+  }
+  return out.split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+}
+
+export function domToMarkup(root) {
+  const blocks = [];
+  let loose = [];
+  const flush = () => {
+    if (!loose.length) return;
+    const text = runsToMarkup(collectRuns({ childNodes: loose }, null, []));
+    if (text) blocks.push(text);
+    loose = [];
+  };
+  const walk = node => {
+    for (const child of node.childNodes || []) {
+      if (child.nodeType !== 1 || !BLOCKS.has(child.nodeName)) { loose.push(child); continue; }
+      flush();
+      if (child.nodeName === 'UL' || child.nodeName === 'OL') {
+        const items = Array.from(child.childNodes || []).filter(item => item.nodeName === 'LI')
+          .map(item => runsToMarkup(collectRuns(item, null, [])).replace(/\n/g, ' ')).filter(Boolean);
+        if (items.length) blocks.push(items.map(item => `- ${item}`).join('\n'));
+      } else if (Array.from(child.childNodes || []).some(inner => inner.nodeType === 1 && BLOCKS.has(inner.nodeName))) {
+        walk(child);
+        flush();
+      } else {
+        const text = runsToMarkup(collectRuns(child, null, []));
+        if (text) blocks.push(text);
+      }
+    }
+  };
+  walk(root);
+  flush();
+  return blocks.join('\n\n');
+}

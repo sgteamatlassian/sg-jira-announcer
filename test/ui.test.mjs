@@ -64,3 +64,35 @@ test('rich text: paragraphs, bullets, emphasis and only http(s) links', () => {
   assert.deepEqual(links, [{ text: 'https://example.com/x', href: 'https://example.com/x' }]);
   assert.equal(toPlainText('Hi **you**\n\n- a\n- b'), 'Hi you\n\n• a\n• b');
 });
+
+// Minimal stand-ins for DOM nodes.
+const t = value => ({ nodeType: 3, nodeValue: value });
+const el = (name, children = [], attrs = {}, style = {}) => ({
+  nodeType: 1, nodeName: name, childNodes: children.map(child => (typeof child === 'string' ? t(child) : child)),
+  getAttribute: key => attrs[key] ?? null, style
+});
+
+test('visual editor: DOM is written back as the text format', async () => {
+  const { domToMarkup } = await import('../static/ui/src/richtext.mjs');
+  const root = el('DIV', [
+    el('P', ['Hello ', el('STRONG', ['all ']), 'and ', el('EM', ['you']), el('BR'), 'second line']),
+    el('P', [el('BR')]),
+    el('UL', [el('LI', ['one']), el('LI', [el('A', ['docs'], { href: 'https://example.com/a' })])]),
+    el('DIV', ['see ', el('A', ['https://example.com/x'], { href: 'https://example.com/x' }), ' or ', el('A', ['bad'], { href: 'javascript:alert(1)' })]),
+    'loose ', el('SPAN', ['bold'], {}, { fontWeight: '700' }), ' text'
+  ]);
+  assert.equal(domToMarkup(root), [
+    'Hello **all** and *you*\nsecond line',
+    '- one\n- [docs](https://example.com/a)',
+    'see https://example.com/x or bad',
+    'loose **bold** text'
+  ].join('\n\n'));
+});
+
+test('visual editor: nested emphasis is flattened and adjacent runs are merged', async () => {
+  const { domToMarkup, parseRichText } = await import('../static/ui/src/richtext.mjs');
+  const root = el('DIV', [el('P', [el('B', ['very ', el('I', ['important'])]), el('B', [' note'])]), el('DIV', [el('DIV', ['a']), el('DIV', ['b'])])]);
+  const markup = domToMarkup(root);
+  assert.equal(markup, '**very important note**\n\na\n\nb');
+  assert.deepEqual(parseRichText(markup)[0].lines[0], [{ text: 'very important note', bold: true }]);
+});

@@ -113,3 +113,26 @@ tr:last-child td { border-bottom: 0; }
   main { padding: 16px; }
   .columns { grid-template-columns: 1fr; }
 }
+
+/* ---- Message editor ---- */
+.body-editor { border: 1px solid var(--input-border); border-radius: 6px; background: var(--surface); overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 2px; padding: 5px 6px; border-bottom: 1px solid var(--border); background: var(--sunken); flex-wrap: wrap; }
+.toolbar .tool { border: 0; background: none; padding: 5px 7px; border-radius: 4px; display: inline-flex; color: var(--text); }
+.toolbar .tool:hover { background: var(--neutral-hover); }
+.toolbar .tool.on { background: var(--info-bg); color: var(--info); }
+.toolbar .divider { width: 1px; height: 20px; background: var(--border); margin: 0 5px; }
+.toolbar .spacer { flex: 1; }
+.modes { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.modes button { border: 0; border-radius: 0; padding: 4px 12px; font-size: 13px; font-weight: 600; background: none; color: var(--subtle); }
+.modes button.on { background: var(--brand); color: var(--on-brand); }
+.link-row { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--border); background: var(--info-bg); }
+.link-row input { flex: 1; }
+.body-editor .visual { min-height: 190px; max-height: 480px; overflow: auto; padding: 12px 14px; outline: none; font-size: 15px; overflow-wrap: anywhere; cursor: text; }
+.body-editor .visual:focus-visible, .body-editor textarea:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+.body-editor .visual a { cursor: text; }
+.code-columns { gap: 0; }
+.body-editor textarea { border: 0 !important; border-radius: 0 !important; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; outline: none; }
+.body-editor .body-preview { border: 0; border-left: 1px solid var(--border); border-radius: 0; }
+.editor-foot { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-top: 1px solid var(--border); }
+.editor-foot .over { color: var(--danger); font-weight: 700; }
+@media (max-width: 760px) { .body-editor .body-preview { border-left: 0; border-top: 1px solid var(--border); } }

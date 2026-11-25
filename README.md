@@ -4,7 +4,7 @@ Forge-App für Jira Cloud: Ankündigungen, die Jira-Benutzern als Popup angezeig
 
 ## Funktionen
 
-- **Ankündigungen** mit Titel, Text (Absätze, Aufzählungen, **fett**, *kursiv*, Links), Art (Information/Erfolg/Warnung/Kritisch) und frei wählbarem Bestätigungs-Button.
+- **Ankündigungen** mit Titel, Text (Absätze, Aufzählungen, **fett**, *kursiv*, Links; Editor umschaltbar zwischen „Visual“ mit Symbolleiste und „Code“ mit Vorschau), Art (Information/Erfolg/Warnung/Kritisch) und frei wählbarem Bestätigungs-Button.
 - **Anzeige** als Popup (Dialog, drei Größen) oder als Flag (Hinweis unten links).
 - **Zielgruppe – Projekte:** Die Ankündigung erscheint nur innerhalb der gewählten Projekte (Ticketansicht, Boards, Queues, Projektseiten). Ohne Projektliste erscheint sie auf jeder Jira-Seite.
   - **CSV-Import der Projekt-Keys:** ein Key pro Zeile, eine Zeile mit mehreren Keys oder eine Tabelle mit einer Spalte „Key“ / „Project key“ / „Projektschlüssel“ (sonst erste Spalte). Trennzeichen Komma, Semikolon oder Tab. Die Keys werden gegen Jira geprüft; unbekannte, doppelte und ungültige Einträge werden vor der Übernahme angezeigt. Wahlweise zur Liste hinzufügen oder die Liste ersetzen. Bis zu 2000 Projekte pro Ankündigung.
