@@ -11,6 +11,7 @@ Forge-App für Jira Cloud: Ankündigungen, die Jira-Benutzern als Popup angezeig
 - **Zielgruppe – Gruppen:** optional nur für Mitglieder bestimmter Jira-Gruppen. Projekte und Gruppen gelten gemeinsam (UND).
 - **Zeitraum:** optional „anzeigen ab“ / „anzeigen bis“, dazu ein Ein/Aus-Schalter.
 - **Bestätigung:** Jede Person sieht die Ankündigung, bis sie bestätigt. Optional „Remind me later“ mit einstellbarer Wartezeit. „Show again“ zeigt sie allen erneut.
+- **Übersicht:** Suche über Titel, Text, Projekt-Keys und Gruppen, Filter nach Status (Live, Scheduled, Disabled, Ended), Erstelldatum, Sortierung – standardmäßig aktive Ankündigungen oben.
 - **Auswertung:** Liste der Personen, die bestätigt haben, mit Zeitpunkt und CSV-Export.
 - Nur Jira-Administratoren können Ankündigungen verwalten (serverseitig bei jedem Aufruf geprüft).
 
@@ -40,18 +41,21 @@ cd static/ui && MOCK_BRIDGE=1 npx vite
 
 ## Registrierung und Installation
 
-Die App wurde am **25. November 2026** im Developer Space **SG Atlassian Team JIRA Dev** registriert und auf **scientificgames-ils-sandbox.atlassian.net** in der Umgebung **development** installiert (Forge-Version **2.0.0**).
+Die App wurde am **25. November 2026** im Developer Space **SG Atlassian Team JIRA Dev** registriert (App-ID `2383f733-6d4c-47b5-8c24-6cfd6cd49897`) und ist auf zwei Sites installiert:
 
-- App-ID: `2383f733-6d4c-47b5-8c24-6cfd6cd49897`
-- Environment-ID: `f8543b25-d715-4fb9-a31c-fb1875c73f67`
-- Installation-ID: `8279f043-a5e2-4e19-8784-b97537195283`
-- [Admin-Seite auf der Sandbox](https://scientificgames-ils-sandbox.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/f8543b25-d715-4fb9-a31c-fb1875c73f67)
+| Umgebung | Site | Environment-ID | Installation-ID |
+| --- | --- | --- | --- |
+| development | [scientificgames-ils-sandbox](https://scientificgames-ils-sandbox.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/f8543b25-d715-4fb9-a31c-fb1875c73f67) | `f8543b25-d715-4fb9-a31c-fb1875c73f67` | `8279f043-a5e2-4e19-8784-b97537195283` |
+| staging | [scientificgames-ils-sandbox-2](https://scientificgames-ils-sandbox-2.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/79d2e263-07cf-49fd-b253-6545d06c59b9) | `79d2e263-07cf-49fd-b253-6545d06c59b9` | `ada47324-d76f-4578-8222-94b85ebc24c6` |
+
+Jede Umgebung hat ihren eigenen Speicher: Ankündigungen der einen Site gibt es auf der anderen nicht.
 
 **Die bestehende App nicht erneut registrieren.** Aktualisieren:
 
 ```sh
 npm run build
 forge deploy --environment development
+forge deploy --environment staging
 ```
 
 Bei geänderten Scopes zusätzlich `forge install --upgrade`.

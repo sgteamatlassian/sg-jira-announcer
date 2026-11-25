@@ -96,3 +96,26 @@ test('visual editor: nested emphasis is flattened and adjacent runs are merged',
   assert.equal(markup, '**very important note**\n\na\n\nb');
   assert.deepEqual(parseRichText(markup)[0].lines[0], [{ text: 'very important note', bold: true }]);
 });
+
+test('overview: live announcements first, then by creation date; filter by status and text', async () => {
+  const { filterAndSort, countByStatus, statusOf } = await import('../static/ui/src/overview.mjs');
+  const now = Date.parse('2026-11-25T12:00:00Z');
+  const a = (title, extra) => ({ title, body: '', projects: [], groups: [], enabled: true, startAt: null, endAt: null, ...extra });
+  const list = [
+    a('Old live', { createdAt: '2026-01-01T00:00:00Z' }),
+    a('Disabled', { createdAt: '2026-11-20T00:00:00Z', enabled: false }),
+    a('Ended', { createdAt: '2026-11-21T00:00:00Z', endAt: '2026-11-22T00:00:00Z' }),
+    a('Scheduled', { createdAt: '2026-11-22T00:00:00Z', startAt: '2026-12-01T00:00:00Z', projects: ['SGSD'] }),
+    a('New live', { createdAt: '2026-11-24T00:00:00Z', body: 'Maintenance', groups: [{ id: 'g', name: 'sg-agents' }] })
+  ];
+  const titles = options => filterAndSort(list, options, now).map(row => row.announcement.title);
+  assert.equal(statusOf(list[2], now), 'ended');
+  assert.deepEqual(titles(), ['New live', 'Old live', 'Scheduled', 'Disabled', 'Ended']);
+  assert.deepEqual(titles({ sort: 'newest' }), ['New live', 'Scheduled', 'Ended', 'Disabled', 'Old live']);
+  assert.deepEqual(titles({ sort: 'title' }), ['Disabled', 'Ended', 'New live', 'Old live', 'Scheduled']);
+  assert.deepEqual(titles({ status: 'live' }), ['New live', 'Old live']);
+  assert.deepEqual(titles({ search: 'sgsd' }), ['Scheduled']);
+  assert.deepEqual(titles({ search: 'AGENTS maint' }), ['New live']);
+  assert.deepEqual(titles({ search: 'live', status: 'disabled' }), []);
+  assert.deepEqual(countByStatus(list, now), { all: 5, live: 2, scheduled: 1, disabled: 1, ended: 1 });
+});

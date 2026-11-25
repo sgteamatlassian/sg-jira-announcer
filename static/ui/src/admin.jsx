@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { invoke, view, Modal } from '@forge/bridge';
 import { parseProjectKeysCsv } from './csv.mjs';
 import { BodyEditor } from './editor.jsx';
+import { STATUSES, SORTS, filterAndSort, countByStatus } from './overview.mjs';
 import './styles.css';
 
 const EMPTY = {
@@ -20,13 +21,6 @@ function toLocalInput(iso) {
 }
 const fromLocalInput = value => (value ? new Date(value).toISOString() : null);
 const message = error => error?.message || String(error);
-
-function status(announcement, now = Date.now()) {
-  if (!announcement.enabled) return ['Disabled', 'neutral'];
-  if (announcement.startAt && now < Date.parse(announcement.startAt)) return ['Scheduled', 'info'];
-  if (announcement.endAt && now >= Date.parse(announcement.endAt)) return ['Ended', 'neutral'];
-  return ['Live', 'success'];
-}
 
 function audience(announcement) {
   const who = announcement.groups.length ? `Members of ${announcement.groups.map(group => group.name).join(', ')}` : 'Everyone';
@@ -374,6 +368,7 @@ function App() {
   const [screen, setScreen] = useState({ name: 'list' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [filter, setFilter] = useState({ status: 'all', search: '', sort: 'active' });
 
   async function refresh() {
     try {
@@ -417,31 +412,58 @@ function App() {
       {notice && <p className="notice" role="status">{notice}</p>}
       <section>
         {announcements == null ? (!error && <p className="muted">Loading…</p>)
-          : announcements.length === 0 ? <p className="muted">No announcements yet.</p> : (
-            <table>
-              <thead><tr><th>Announcement</th><th>Status</th><th>Who gets it</th><th>Period</th><th /></tr></thead>
-              <tbody>
-                {announcements.map(announcement => {
-                  const [label, tone] = status(announcement);
-                  return (
-                    <tr key={announcement.id}>
-                      <td><strong>{announcement.title}</strong><br /><span className="muted">{announcement.display === 'flag' ? 'Flag' : 'Popup'} · changed {formatDate(announcement.updatedAt)}</span></td>
-                      <td><span className={`lozenge ${tone}`}>{label}</span></td>
-                      <td>{audience(announcement)}</td>
-                      <td>{announcement.startAt || announcement.endAt ? `${formatDate(announcement.startAt)} → ${formatDate(announcement.endAt)}` : 'No limit'}</td>
-                      <td className="row-actions">
-                        <button type="button" onClick={() => { setNotice(''); setScreen({ name: 'edit', announcement }); }}>Edit</button>
-                        <button type="button" onClick={() => toggle(announcement)}>{announcement.enabled ? 'Disable' : 'Enable'}</button>
-                        <button type="button" onClick={() => setScreen({ name: 'readers', announcement })}>Confirmed by</button>
-                        <button type="button" onClick={() => { if (window.confirm(`Show “${announcement.title}” again to everyone who has already confirmed it?`)) act('resetAcknowledgements', announcement, 'The announcement is shown to everyone again.'); }}>Show again</button>
-                        <button type="button" className="danger" onClick={() => { if (window.confirm(`Delete “${announcement.title}” and its confirmations? This cannot be undone.`)) act('remove', announcement, 'Announcement deleted.'); }}>Delete</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+          : announcements.length === 0 ? <p className="muted">No announcements yet.</p> : (() => {
+            const counts = countByStatus(announcements);
+            const rows = filterAndSort(announcements, filter);
+            return (
+              <>
+                <div className="filters">
+                  <input type="search" value={filter.search} placeholder="Search title, text, project key or group…" aria-label="Search announcements"
+                    onChange={event => setFilter({ ...filter, search: event.target.value })} />
+                  <div className="status-filter" role="group" aria-label="Filter by status">
+                    {[{ id: 'all', label: 'All' }, ...STATUSES].map(option => (
+                      <button type="button" key={option.id} aria-pressed={filter.status === option.id} className={filter.status === option.id ? 'on' : ''}
+                        onClick={() => setFilter({ ...filter, status: option.id })}>{option.label} <span className="count">{counts[option.id]}</span></button>
+                    ))}
+                  </div>
+                  <label className="sort">Sort
+                    <select value={filter.sort} onChange={event => setFilter({ ...filter, sort: event.target.value })}>
+                      {SORTS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="muted">No announcement matches the filter. <button type="button" className="link" onClick={() => setFilter({ status: 'all', search: '', sort: filter.sort })}>Clear filter</button></p>
+                ) : (
+                  <table>
+                    <thead><tr><th>Announcement</th><th>Status</th><th>Created</th><th>Who gets it</th><th>Period</th><th /></tr></thead>
+                    <tbody>
+                      {rows.map(({ announcement, status }) => {
+                        const { label, tone } = STATUSES.find(option => option.id === status);
+                        return (
+                          <tr key={announcement.id}>
+                            <td><strong>{announcement.title}</strong><br /><span className="muted">{announcement.display === 'flag' ? 'Flag' : 'Popup'} · changed {formatDate(announcement.updatedAt)}</span></td>
+                            <td><span className={`lozenge ${tone}`}>{label}</span></td>
+                            <td className="nowrap">{formatDate(announcement.createdAt)}</td>
+                            <td>{audience(announcement)}</td>
+                            <td>{announcement.startAt || announcement.endAt ? `${formatDate(announcement.startAt)} → ${formatDate(announcement.endAt)}` : 'No limit'}</td>
+                            <td className="row-actions">
+                              <button type="button" onClick={() => { setNotice(''); setScreen({ name: 'edit', announcement }); }}>Edit</button>
+                              <button type="button" onClick={() => toggle(announcement)}>{announcement.enabled ? 'Disable' : 'Enable'}</button>
+                              <button type="button" onClick={() => setScreen({ name: 'readers', announcement })}>Confirmed by</button>
+                              <button type="button" onClick={() => { if (window.confirm(`Show “${announcement.title}” again to everyone who has already confirmed it?`)) act('resetAcknowledgements', announcement, 'The announcement is shown to everyone again.'); }}>Show again</button>
+                              <button type="button" className="danger" onClick={() => { if (window.confirm(`Delete “${announcement.title}” and its confirmations? This cannot be undone.`)) act('remove', announcement, 'Announcement deleted.'); }}>Delete</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                <p className="muted">{rows.length} of {announcements.length} announcement{announcements.length === 1 ? '' : 's'}</p>
+              </>
+            );
+          })()}
       </section>
     </main>
   );
