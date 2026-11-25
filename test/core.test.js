@@ -68,3 +68,10 @@ test('announcements that do not fit into one storage value are rejected', () => 
   assert.throws(() => core.assertFits(Array.from({ length: 30 }, () => big)), /no longer fit/);
   core.assertFits([big]);
 });
+
+test('saved overview columns: default when nothing valid is stored, fixed order otherwise', () => {
+  assert.deepEqual(core.normalizeColumns(undefined), ['status', 'created', 'audience', 'period']);
+  assert.deepEqual(core.normalizeColumns(['period', 'bogus']), ['status', 'created', 'audience', 'period']);
+  assert.deepEqual(core.normalizeColumns(['period', 'updated', 'status']), ['status', 'updated', 'period']);
+  assert.deepEqual(core.normalizeColumns([]), []);
+});

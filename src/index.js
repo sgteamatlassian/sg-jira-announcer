@@ -13,6 +13,7 @@ const resolver = new Resolver();
 //   announcements             all announcements (array) - one read per page view
 //   user:<accountId>          { acks, snooze, groups } of one person
 //   read:<id>:<accountId>     one acknowledgement, for the "who has read" report
+//   prefs:<accountId>         an administrator's view settings (visible columns)
 const ANNOUNCEMENTS = 'announcements';
 const GROUP_CACHE_MS = 10 * 60 * 1000;
 
@@ -104,7 +105,20 @@ resolver.define('snooze', async ({ payload, context }) => {
 
 // ---- Jira administrators (admin page) ---------------------------------------
 
-admin('list', async () => ({ announcements: await loadAll(), limits: core.LIMITS }));
+const prefsKey = accountId => `prefs:${accountId}`;
+
+admin('list', async (payload, context) => {
+  const [announcements, prefs] = await Promise.all([loadAll(), kvs.get(prefsKey(context.accountId))]);
+  return { announcements, limits: core.LIMITS, columns: core.normalizeColumns(prefs?.columns) };
+});
+
+// The columns this administrator wants to see in the overview.
+admin('saveColumns', async ({ columns }, context) => {
+  if (!Array.isArray(columns) || columns.some(id => !core.COLUMNS.includes(id))) throw new Error('Invalid columns.');
+  const saved = core.normalizeColumns(columns);
+  await kvs.set(prefsKey(context.accountId), { columns: saved });
+  return { columns: saved };
+});
 
 admin('save', async ({ announcement }, context) => {
   const all = await loadAll();

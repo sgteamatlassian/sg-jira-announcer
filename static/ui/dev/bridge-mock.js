@@ -18,8 +18,10 @@ announcements.push(
   { ...announcements[0], id: '44444444-4444-4444-8444-444444444444', title: 'Password policy change', groups: [], projects: [], createdAt: days(-10), updatedAt: days(-10) },
   { ...announcements[0], id: '55555555-5555-4555-8555-555555555555', title: 'Summer freeze', groups: [], projects: [], endAt: days(-60), createdAt: days(-90), updatedAt: days(-90) }
 );
+let columns = JSON.parse(localStorage.getItem('mock-columns') || 'null') || ['status', 'created', 'audience', 'period'];
 const handlers = {
-  list: () => ({ announcements, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
+  list: () => ({ announcements, columns, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
+  saveColumns: payload => { columns = payload.columns; localStorage.setItem('mock-columns', JSON.stringify(columns)); return { columns }; },
   save: ({ announcement }) => {
     const saved = { rev: 1, ...announcement, id: announcement.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
     announcements = announcement.id ? announcements.map(a => (a.id === saved.id ? saved : a)) : [saved, ...announcements];

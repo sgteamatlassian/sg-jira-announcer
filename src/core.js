@@ -130,6 +130,17 @@ function matchesGroups(announcement, groupIds) {
   return announcement.groups.some(group => groupIds.includes(group.id));
 }
 
+// Optional columns of the admin overview; the title and the row menu are always there.
+const COLUMNS = ['status', 'created', 'updated', 'audience', 'period'];
+const DEFAULT_COLUMNS = ['status', 'created', 'audience', 'period'];
+
+// A person's saved column choice, in the fixed column order. Anything that is
+// not a valid choice (nothing saved yet, unknown ids) gives the default.
+function normalizeColumns(value) {
+  if (!Array.isArray(value) || value.some(id => !COLUMNS.includes(id))) return [...DEFAULT_COLUMNS];
+  return COLUMNS.filter(id => value.includes(id));
+}
+
 // What the browser gets: no audit fields, no group list.
 function publicView(a) {
   return {
@@ -141,5 +152,5 @@ function publicView(a) {
 
 module.exports = {
   LIMITS, PROJECT_KEY, ID, normalizeAnnouncement, normalizeProjects, assertFits,
-  isLive, openFor, matchesGroups, publicView
+  isLive, openFor, matchesGroups, publicView, COLUMNS, normalizeColumns
 };

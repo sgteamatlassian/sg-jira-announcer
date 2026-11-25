@@ -360,6 +360,46 @@ function Readers({ announcement, onBack }) {
   );
 }
 
+// ---- Popover: the row menu and the column chooser ----------------------------
+
+// A button that opens a small panel. Closes on outside click and Escape; opens
+// upwards when there is no room below (the page lives in a sized iframe).
+function Popover({ label, title, className = '', children }) {
+  const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
+  const root = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const outside = event => { if (!root.current.contains(event.target)) setOpen(false); };
+    const escape = event => { if (event.key === 'Escape') { setOpen(false); root.current.querySelector('button').focus(); } };
+    document.addEventListener('mousedown', outside);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
+  }, [open]);
+  function toggle() {
+    if (!open) {
+      const box = root.current.getBoundingClientRect();
+      const below = document.documentElement.clientHeight - box.bottom;
+      setUp(below < 240 && box.top > below);
+    }
+    setOpen(!open);
+  }
+  return (
+    <span className={`popover ${className}`} ref={root}>
+      <button type="button" className="popover-button" aria-haspopup="true" aria-expanded={open} aria-label={title} title={title} onClick={toggle}>{label}</button>
+      {open && <div className={`popover-panel${up ? ' up' : ''}`}>{typeof children === 'function' ? children(() => setOpen(false)) : children}</div>}
+    </span>
+  );
+}
+
+const COLUMNS = [
+  { id: 'status', label: 'Status' },
+  { id: 'created', label: 'Created' },
+  { id: 'updated', label: 'Changed' },
+  { id: 'audience', label: 'Who gets it' },
+  { id: 'period', label: 'Period' }
+];
+
 // ---- Page -------------------------------------------------------------------
 
 function App() {
@@ -369,11 +409,12 @@ function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState({ status: 'all', search: '', sort: 'active' });
+  const [columns, setColumns] = useState(COLUMNS.map(column => column.id));
 
   async function refresh() {
     try {
       const result = await invoke('list');
-      setAnnouncements(result.announcements); setLimits(result.limits); setError('');
+      setAnnouncements(result.announcements); setLimits(result.limits); setColumns(result.columns); setError('');
     } catch (failure) { setError(message(failure)); }
   }
   useEffect(() => { refresh(); }, []);
@@ -381,6 +422,12 @@ function App() {
   async function act(name, announcement, done) {
     setError(''); setNotice('');
     try { await invoke(name, { id: announcement.id }); setNotice(done); await refresh(); } catch (failure) { setError(message(failure)); }
+  }
+  // Shown at once, saved for this administrator in the background.
+  function toggleColumn(id) {
+    const next = columns.includes(id) ? columns.filter(other => other !== id) : [...columns, id];
+    setColumns(next);
+    invoke('saveColumns', { columns: next }).catch(failure => setError(`The column selection could not be saved: ${message(failure)}`));
   }
   async function toggle(announcement) {
     setError(''); setNotice('');
@@ -431,28 +478,58 @@ function App() {
                       {SORTS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </select>
                   </label>
+                  <Popover className="columns-chooser" title="Show or hide columns" label="Columns">
+                    <div className="menu-title">Columns</div>
+                    {COLUMNS.map(column => (
+                      <label className="menu-check" key={column.id}>
+                        <input type="checkbox" checked={columns.includes(column.id)} onChange={() => toggleColumn(column.id)} /> {column.label}
+                      </label>
+                    ))}
+                  </Popover>
                 </div>
                 {rows.length === 0 ? (
                   <p className="muted">No announcement matches the filter. <button type="button" className="link" onClick={() => setFilter({ status: 'all', search: '', sort: filter.sort })}>Clear filter</button></p>
                 ) : (
                   <table>
-                    <thead><tr><th>Announcement</th><th>Status</th><th>Created</th><th>Who gets it</th><th>Period</th><th /></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Announcement</th>
+                        {COLUMNS.filter(column => columns.includes(column.id)).map(column => <th key={column.id}>{column.label}</th>)}
+                        <th aria-label="Actions" />
+                      </tr>
+                    </thead>
                     <tbody>
                       {rows.map(({ announcement, status }) => {
                         const { label, tone } = STATUSES.find(option => option.id === status);
+                        const cells = {
+                          status: <td key="status"><span className={`lozenge ${tone}`}>{label}</span></td>,
+                          created: <td key="created" className="nowrap">{formatDate(announcement.createdAt)}</td>,
+                          updated: <td key="updated" className="nowrap">{formatDate(announcement.updatedAt)}</td>,
+                          audience: <td key="audience">{audience(announcement)}</td>,
+                          period: <td key="period">{announcement.startAt || announcement.endAt ? `${formatDate(announcement.startAt)} → ${formatDate(announcement.endAt)}` : 'No limit'}</td>
+                        };
                         return (
                           <tr key={announcement.id}>
-                            <td><strong>{announcement.title}</strong><br /><span className="muted">{announcement.display === 'flag' ? 'Flag' : 'Popup'} · changed {formatDate(announcement.updatedAt)}</span></td>
-                            <td><span className={`lozenge ${tone}`}>{label}</span></td>
-                            <td className="nowrap">{formatDate(announcement.createdAt)}</td>
-                            <td>{audience(announcement)}</td>
-                            <td>{announcement.startAt || announcement.endAt ? `${formatDate(announcement.startAt)} → ${formatDate(announcement.endAt)}` : 'No limit'}</td>
-                            <td className="row-actions">
-                              <button type="button" onClick={() => { setNotice(''); setScreen({ name: 'edit', announcement }); }}>Edit</button>
-                              <button type="button" onClick={() => toggle(announcement)}>{announcement.enabled ? 'Disable' : 'Enable'}</button>
-                              <button type="button" onClick={() => setScreen({ name: 'readers', announcement })}>Confirmed by</button>
-                              <button type="button" onClick={() => { if (window.confirm(`Show “${announcement.title}” again to everyone who has already confirmed it?`)) act('resetAcknowledgements', announcement, 'The announcement is shown to everyone again.'); }}>Show again</button>
-                              <button type="button" className="danger" onClick={() => { if (window.confirm(`Delete “${announcement.title}” and its confirmations? This cannot be undone.`)) act('remove', announcement, 'Announcement deleted.'); }}>Delete</button>
+                            <td><strong>{announcement.title}</strong><br /><span className="muted">{announcement.display === 'flag' ? 'Flag' : 'Popup'}</span></td>
+                            {COLUMNS.filter(column => columns.includes(column.id)).map(column => cells[column.id])}
+                            <td className="row-menu">
+                              <Popover className="right" title={`Actions for ${announcement.title}`} label="⋯">
+                                {close => {
+                                  const item = (text, action, className = '') => (
+                                    <button type="button" role="menuitem" className={`menu-item ${className}`} onClick={() => { close(); action(); }}>{text}</button>
+                                  );
+                                  return (
+                                    <div role="menu">
+                                      {item('Edit', () => { setNotice(''); setScreen({ name: 'edit', announcement }); })}
+                                      {item(announcement.enabled ? 'Disable' : 'Enable', () => toggle(announcement))}
+                                      {item('Confirmed by', () => setScreen({ name: 'readers', announcement }))}
+                                      {item('Show again to everyone', () => { if (window.confirm(`Show “${announcement.title}” again to everyone who has already confirmed it?`)) act('resetAcknowledgements', announcement, 'The announcement is shown to everyone again.'); })}
+                                      <div className="menu-divider" />
+                                      {item('Delete', () => { if (window.confirm(`Delete “${announcement.title}” and its confirmations? This cannot be undone.`)) act('remove', announcement, 'Announcement deleted.'); }, 'danger')}
+                                    </div>
+                                  );
+                                }}
+                              </Popover>
                             </td>
                           </tr>
                         );
