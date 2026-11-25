@@ -42,12 +42,13 @@ cd static/ui && MOCK_BRIDGE=1 npx vite
 
 ## Registrierung und Installation
 
-Die App wurde am **25. November 2026** im Developer Space **SG Atlassian Team JIRA Dev** registriert (App-ID `2383f733-6d4c-47b5-8c24-6cfd6cd49897`) und ist auf zwei Sites installiert:
+Die App wurde am **25. November 2026** im Developer Space **SG Atlassian Team JIRA Dev** registriert (App-ID `2383f733-6d4c-47b5-8c24-6cfd6cd49897`) und ist auf drei Sites installiert:
 
 | Umgebung | Site | Environment-ID | Installation-ID |
 | --- | --- | --- | --- |
 | development | [scientificgames-ils-sandbox](https://scientificgames-ils-sandbox.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/f8543b25-d715-4fb9-a31c-fb1875c73f67) | `f8543b25-d715-4fb9-a31c-fb1875c73f67` | `8279f043-a5e2-4e19-8784-b97537195283` |
 | staging | [scientificgames-ils-sandbox-2](https://scientificgames-ils-sandbox-2.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/79d2e263-07cf-49fd-b253-6545d06c59b9) | `79d2e263-07cf-49fd-b253-6545d06c59b9` | `ada47324-d76f-4578-8222-94b85ebc24c6` |
+| production | [scientificgames-ils](https://scientificgames-ils.atlassian.net/jira/settings/apps/2383f733-6d4c-47b5-8c24-6cfd6cd49897/48330237-db56-4d87-8363-24115be91823) | `48330237-db56-4d87-8363-24115be91823` | `a3d48d1a-d539-471f-8a00-424c1e29a225` |
 
 Jede Umgebung hat ihren eigenen Speicher: Ankündigungen der einen Site gibt es auf der anderen nicht.
 
@@ -57,6 +58,9 @@ Jede Umgebung hat ihren eigenen Speicher: Ankündigungen der einen Site gibt es 
 npm run build
 forge deploy --environment development
 forge deploy --environment staging
+forge deploy --environment production
 ```
+
+Das Icon liegt in `static/icons` (`announcer.svg` für die Menüeinträge, `announcer.png` mit 512 px zum Hochladen in der Developer Console).
 
 Bei geänderten Scopes zusätzlich `forge install --upgrade`.

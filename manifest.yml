@@ -5,6 +5,7 @@ modules:
       resolver:
         function: resolver
       title: SG Announcer
+      icon: resource:icons;announcer.svg
       layout: blank
   # Apps menu entry for every Jira user: the announcements they have confirmed.
   jira:globalPage:
@@ -13,6 +14,7 @@ modules:
       resolver:
         function: resolver
       title: My announcements
+      icon: resource:icons;announcer.svg
       route: my-announcements
       layout: blank
   # Runs invisibly on every Jira page and opens the announcement popup.
@@ -32,6 +34,8 @@ modules:
 resources:
   - key: ui
     path: static/ui/dist
+  - key: icons
+    path: static/icons
 permissions:
   scopes:
     - storage:app
