@@ -18,9 +18,14 @@ announcements.push(
   { ...announcements[0], id: '44444444-4444-4444-8444-444444444444', title: 'Password policy change', groups: [], projects: [], createdAt: days(-10), updatedAt: days(-10) },
   { ...announcements[0], id: '55555555-5555-4555-8555-555555555555', title: 'Summer freeze', groups: [], projects: [], endAt: days(-60), createdAt: days(-90), updatedAt: days(-90) }
 );
+let settings = { claimedDomains: ['example.com'] };
 let columns = JSON.parse(localStorage.getItem('mock-columns') || 'null') || ['status', 'created', 'audience', 'period', 'acks'];
 const handlers = {
-  list: () => ({ announcements, columns, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
+  saveSettings: payload => {
+    settings = { claimedDomains: String(payload.settings.claimedDomains).split(/[\s,;]+/).filter(Boolean) };
+    return { settings };
+  },
+  list: () => ({ announcements, columns, settings, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
   ackCounts: () => ({ counts: Object.fromEntries(announcements.map((a, i) => [a.id, i === 3 ? null : i * 17])) }),
   saveColumns: payload => { columns = payload.columns; localStorage.setItem('mock-columns', JSON.stringify(columns)); return { columns }; },
   save: ({ announcement }) => {

@@ -114,3 +114,68 @@ test('"My announcements": confirmed ones only, newest confirmation first, delete
   assert.equal('groups' in mine[0], false);
   assert.deepEqual(core.confirmedBy([a], null), []);
 });
+
+test('excluded groups: their members never get it, also when named or in an included group', () => {
+  const excluded = [{ id: 'ex', name: 'Contractors' }];
+  const everyone = make({ excludedGroups: excluded });
+  assert.equal(core.matchesAudience(everyone, 'me', []), true);
+  assert.equal(core.matchesAudience(everyone, 'me', ['other']), true);
+  assert.equal(core.matchesAudience(everyone, 'me', ['other', 'ex']), false);
+  const targeted = make({ groups: [{ id: 'g1', name: 'Agents' }], users: [{ id: 'me', name: 'Me' }], excludedGroups: excluded });
+  assert.equal(core.matchesAudience(targeted, 'me', ['ex']), false);
+  assert.equal(core.matchesAudience(targeted, 'other', ['g1', 'ex']), false);
+  assert.equal(core.matchesAudience(targeted, 'other', ['g1']), true);
+  assert.equal(core.needsGroups(everyone), true);
+  assert.equal(core.needsGroups(make()), false);
+  assert.deepEqual(make().excludedGroups, []);
+  assert.throws(() => make({ excludedGroups: 'ex' }), /Excluded groups must be a list/);
+});
+
+test('mandatory: always a popup, never "Remind me later"; the browser learns it is mandatory', () => {
+  const a = make({ mandatory: true, display: 'flag', allowSnooze: true });
+  assert.equal(a.mandatory, true);
+  assert.equal(a.display, 'dialog');
+  assert.equal(a.allowSnooze, false);
+  assert.equal(core.publicView(a).mandatory, true);
+  assert.equal('excludedGroups' in core.publicView(a), false);
+  assert.equal(make({ allowSnooze: true }).allowSnooze, true);
+  assert.equal(make().mandatory, false);
+});
+
+test('where: Jira only by default, portal only, or both', () => {
+  assert.equal(make().surfaces, 'jira');
+  assert.equal(make({ surfaces: 'nonsense' }).surfaces, 'jira');
+  assert.equal(core.shownOn(make(), 'jira'), true);
+  assert.equal(core.shownOn(make(), 'portal'), false);
+  assert.equal(core.shownOn(make({ surfaces: 'portal' }), 'jira'), false);
+  assert.equal(core.shownOn(make({ surfaces: 'portal' }), 'portal'), true);
+  assert.equal(core.shownOn(make({ surfaces: 'both' }), 'jira'), true);
+  assert.equal(core.shownOn(make({ surfaces: 'both' }), 'portal'), true);
+  const { surfaces, ...old } = make();
+  assert.equal(core.shownOn(old, 'jira'), true);
+  assert.equal(core.shownOn(old, 'portal'), false);
+});
+
+test('claimed domains: entered once, matched with subdomains, case-insensitive', () => {
+  assert.deepEqual(core.normalizeDomains('Example.com\n@example.org, example.com;  '), ['example.com', 'example.org']);
+  assert.throws(() => core.normalizeDomains(['not a domain']), /not a valid domain/);
+  assert.equal(core.emailDomain('Jane.Doe@Mail.Example.COM'), 'mail.example.com');
+  assert.equal(core.emailDomain(''), null);
+  assert.equal(core.emailDomain(undefined), null);
+  assert.equal(core.isClaimed('mail.example.com', ['example.com']), true);
+  assert.equal(core.isClaimed('notexample.com', ['example.com']), false);
+  assert.equal(core.isClaimed(null, ['example.com']), false);
+});
+
+test('exclude users of claimed domains: only when the announcement says so', () => {
+  const claimed = { domain: 'example.com', claimedDomains: ['example.com'] };
+  const external = { domain: 'customer.net', claimedDomains: ['example.com'] };
+  const a = make({ excludeClaimedDomains: true });
+  assert.equal(core.needsEmail(a), true);
+  assert.equal(core.matchesAudience(a, 'me', [], claimed), false);
+  assert.equal(core.matchesAudience(a, 'me', [], external), true);
+  assert.equal(core.matchesAudience(make(), 'me', [], claimed), true);
+  assert.equal(core.needsEmail(make()), false);
+  const named = make({ excludeClaimedDomains: true, users: [{ id: 'me', name: 'Me' }] });
+  assert.equal(core.matchesAudience(named, 'me', [], claimed), false);
+});

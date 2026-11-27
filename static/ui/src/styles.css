@@ -58,6 +58,11 @@ button.link { border: 0; background: none; padding: 4px; font-weight: 500; text-
 .popup-warning { border-top-color: var(--warning); }
 .popup-error { border-top-color: var(--danger); }
 .popup-success { border-top-color: var(--success); }
+/* Customer portal: the frame takes the height of its content there, so the
+   popup must not take the frame's height (100vh) or the text shrinks to one line. */
+.popup-fit { height: auto; }
+.popup-fit .popup-body { flex: none; overflow: visible; }
+.popup-inline { height: auto; margin: 8px 0; border: 1px solid var(--border); border-top-width: 4px; border-radius: 6px; }
 .popup-header { display: flex; align-items: center; gap: 12px; padding: 22px 24px 8px; }
 .popup-header h1 { font-size: 20px; margin: 0; line-height: 1.3; overflow-wrap: anywhere; }
 .popup-icon { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--info); }

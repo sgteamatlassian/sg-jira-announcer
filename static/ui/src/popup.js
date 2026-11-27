@@ -12,10 +12,13 @@ function element(tag, className, text) {
 }
 
 // `closeOnly` + `note`: a read-only view ("My announcements") with one Close button.
-export function showPopup({ announcement, preview = false, closeOnly = false, note = '' }) {
+// `onAnswer`: shown inside the page instead of a modal (customer portal); the
+// answer goes to this callback instead of view.close().
+// `fit`: as tall as the text instead of the frame (modals in the customer portal).
+export function showPopup({ announcement, preview = false, closeOnly = false, note = '', onAnswer = null, fit = false }) {
   view.theme.enable().catch(() => {});
   const root = document.getElementById('root');
-  const popup = element('div', `popup popup-${announcement.appearance}`);
+  const popup = element('div', `popup popup-${announcement.appearance}${onAnswer ? ' popup-inline' : ''}${fit || onAnswer ? ' popup-fit' : ''}`);
 
   const header = element('header', 'popup-header');
   header.append(element('span', 'popup-icon'), element('h1', null, announcement.title));
@@ -39,11 +42,11 @@ export function showPopup({ announcement, preview = false, closeOnly = false, no
   if (preview) footer.append(element('span', 'muted popup-note', 'Preview – nothing is recorded.'));
   if (announcement.allowSnooze) {
     const later = element('button', 'subtle', 'Remind me later');
-    later.addEventListener('click', () => view.close({ action: preview ? 'preview' : 'snooze' }));
+    later.addEventListener('click', () => (onAnswer ? onAnswer('snooze') : view.close({ action: preview ? 'preview' : 'snooze' })));
     footer.append(later);
   }
   const confirm = element('button', 'primary', announcement.buttonText);
-  confirm.addEventListener('click', () => view.close({ action: preview ? 'preview' : 'acknowledge' }));
+  confirm.addEventListener('click', () => (onAnswer ? onAnswer('acknowledge') : view.close({ action: preview ? 'preview' : 'acknowledge' })));
   footer.append(confirm);
   popup.append(footer);
 

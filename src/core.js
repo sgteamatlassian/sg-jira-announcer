@@ -6,6 +6,9 @@
 const DISPLAYS = ['dialog', 'flag'];
 const SIZES = ['small', 'medium', 'large'];
 const APPEARANCES = ['info', 'success', 'warning', 'error'];
+// Where it appears: inside Jira, in the JSM customer portal, or both.
+const SURFACES = ['jira', 'portal', 'both'];
+const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,254}$/;
 const ID = /^[a-f0-9-]{36}$/;
 
@@ -17,6 +20,7 @@ const LIMITS = {
   users: 200,
   projects: 2000,
   announcements: 100,
+  domains: 200,
   // One Forge storage value may hold 240 KiB; all announcements share one key.
   totalBytes: 200 * 1024
 };
@@ -55,9 +59,9 @@ function normalizeProjects(value) {
   return keys;
 }
 
-function normalizeGroups(value) {
+function normalizeGroups(value, label = 'groups') {
   if (value == null) return [];
-  if (!Array.isArray(value)) throw new Error('Groups must be a list.');
+  if (!Array.isArray(value)) throw new Error(`${label[0].toUpperCase()}${label.slice(1)} must be a list.`);
   const groups = [];
   const seen = new Set();
   for (const entry of value) {
@@ -66,7 +70,7 @@ function normalizeGroups(value) {
     if (!id || id.length > 200 || name.length > 300) throw new Error('Invalid group.');
     if (!seen.has(id)) { seen.add(id); groups.push({ id, name: name || id }); }
   }
-  if (groups.length > LIMITS.groups) throw new Error(`At most ${LIMITS.groups} groups per announcement.`);
+  if (groups.length > LIMITS.groups) throw new Error(`At most ${LIMITS.groups} ${label} per announcement.`);
   return groups;
 }
 
@@ -93,23 +97,29 @@ function normalizeAnnouncement(input, { existing = null, id, now, actor }) {
   const endAt = instant(input.endAt, 'End');
   if (startAt && endAt && Date.parse(endAt) <= Date.parse(startAt)) throw new Error('End must be after start.');
   const snoozeHours = Number(input.snoozeHours);
+  // Mandatory: always a popup, on every Jira page, without "Remind me later".
+  const mandatory = input.mandatory === true;
   const stamp = new Date(now).toISOString();
   return {
     id: existing ? existing.id : id,
     rev: existing ? existing.rev : 1,
     title: text(input.title, 'Title', LIMITS.title, { required: true }),
     body: text(input.body, 'Message', LIMITS.body),
-    display: oneOf(input.display, DISPLAYS, 'dialog'),
+    mandatory,
+    surfaces: oneOf(input.surfaces, SURFACES, 'jira'),
+    display: mandatory ? 'dialog' : oneOf(input.display, DISPLAYS, 'dialog'),
     size: oneOf(input.size, SIZES, 'medium'),
     appearance: oneOf(input.appearance, APPEARANCES, 'info'),
     buttonText: text(input.buttonText, 'Button text', LIMITS.buttonText) || 'Got it',
-    allowSnooze: input.allowSnooze === true,
+    allowSnooze: !mandatory && input.allowSnooze === true,
     snoozeHours: Number.isFinite(snoozeHours) && snoozeHours >= 1 && snoozeHours <= 720 ? Math.round(snoozeHours) : 24,
     enabled: input.enabled === true,
     startAt,
     endAt,
     groups: normalizeGroups(input.groups),
     users: normalizeUsers(input.users),
+    excludedGroups: normalizeGroups(input.excludedGroups, 'excluded groups'),
+    excludeClaimedDomains: input.excludeClaimedDomains === true,
     projects: normalizeProjects(input.projects),
     createdAt: existing ? existing.createdAt : stamp,
     updatedAt: stamp,
@@ -142,10 +152,47 @@ function openFor(announcements, state, now) {
     && !(snooze[a.id] && snooze[a.id].rev === a.rev && now < snooze[a.id].until));
 }
 
-// Who gets it: nobody named = everyone. Otherwise the person must be one of
-// the named people or a member of one of the groups. (Announcements saved
-// before people could be named have no `users`.)
-function matchesAudience(announcement, accountId, groupIds) {
+// The claimed domains of the organisation, as an administrator entered them
+// in the app settings: lower case, without "@", de-duplicated.
+function normalizeDomains(value) {
+  if (value == null) return [];
+  const entries = Array.isArray(value) ? value : String(value).split(/[\s,;]+/);
+  const domains = [];
+  for (const entry of entries) {
+    const domain = String(entry).trim().toLowerCase().replace(/^@/, '');
+    if (!domain) continue;
+    if (!DOMAIN.test(domain)) throw new Error(`"${domain.slice(0, 60)}" is not a valid domain.`);
+    if (!domains.includes(domain)) domains.push(domain);
+  }
+  if (domains.length > LIMITS.domains) throw new Error(`At most ${LIMITS.domains} domains.`);
+  return domains;
+}
+
+// The domain of an email address, lower case; null when there is none.
+function emailDomain(email) {
+  const at = typeof email === 'string' ? email.lastIndexOf('@') : -1;
+  return at > 0 ? email.slice(at + 1).trim().toLowerCase() || null : null;
+}
+
+// A domain counts as claimed when it is one of the domains or a subdomain of one.
+function isClaimed(domain, claimedDomains) {
+  return !!domain && claimedDomains.some(claimed => domain === claimed || domain.endsWith(`.${claimed}`));
+}
+
+// Inside Jira or in the customer portal? Older announcements are Jira only.
+function shownOn(announcement, surface) {
+  const surfaces = announcement.surfaces || 'jira';
+  return surfaces === 'both' || surfaces === surface;
+}
+
+// Who gets it: members of an excluded group never, and - when the announcement
+// says so - nobody with an email address at a claimed domain. Otherwise nobody
+// named = everyone, else the person must be one of the named people or a member
+// of one of the groups. (Older announcements lack the newer fields.)
+// `viewer`: { domain, claimedDomains } for the claimed-domain rule.
+function matchesAudience(announcement, accountId, groupIds, viewer = {}) {
+  if ((announcement.excludedGroups || []).some(group => groupIds.includes(group.id))) return false;
+  if (announcement.excludeClaimedDomains && isClaimed(viewer.domain, viewer.claimedDomains || [])) return false;
   const users = announcement.users || [];
   if (!announcement.groups.length && !users.length) return true;
   return users.some(user => user.id === accountId) || announcement.groups.some(group => groupIds.includes(group.id));
@@ -164,6 +211,11 @@ function confirmedBy(announcements, state) {
     }))
     .sort((a, b) => (Date.parse(b.confirmedAt) || 0) - (Date.parse(a.confirmedAt) || 0));
 }
+
+// Does deciding the audience need the viewer's group memberships?
+const needsGroups = announcement => announcement.groups.length > 0 || (announcement.excludedGroups || []).length > 0;
+// ... or the viewer's email domain?
+const needsEmail = announcement => announcement.excludeClaimedDomains === true;
 
 // Optional columns of the admin overview; the title and the row menu are always there.
 const COLUMNS = ['status', 'created', 'updated', 'audience', 'period', 'acks'];
@@ -186,11 +238,12 @@ function publicView(a) {
   return {
     id: a.id, rev: a.rev, title: a.title, body: a.body, display: a.display, size: a.size,
     appearance: a.appearance, buttonText: a.buttonText, allowSnooze: a.allowSnooze,
-    snoozeHours: a.snoozeHours, projects: a.projects
+    snoozeHours: a.snoozeHours, projects: a.projects, mandatory: a.mandatory === true
   };
 }
 
 module.exports = {
   LIMITS, PROJECT_KEY, ID, normalizeAnnouncement, normalizeProjects, assertFits,
-  isLive, openFor, matchesAudience, publicView, confirmedBy, COLUMNS, normalizeColumns
+  isLive, openFor, matchesAudience, needsGroups, needsEmail, publicView,
+  SURFACES, shownOn, normalizeDomains, emailDomain, isClaimed, confirmedBy, COLUMNS, normalizeColumns
 };

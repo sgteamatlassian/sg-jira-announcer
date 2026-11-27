@@ -1,5 +1,6 @@
 // One bundle serves four roles; the Forge context says which one this frame is:
 //   - the invisible background script on every Jira page
+//   - the customer portal header (JSM): mandatory announcements
 //   - the popup (a modal opened by the background script, or the admin preview)
 //   - "My announcements", the page every user has in the Apps menu
 //   - the admin page
@@ -15,6 +16,9 @@ if (extension.modal) {
 } else if (extension.type === 'jira:globalBackgroundScript') {
   const { runBackground } = await import('./background.js');
   runBackground();
+} else if (extension.type === 'jiraServiceManagement:portalHeader') {
+  const { runPortal } = await import('./portal.js');
+  runPortal();
 } else if (extension.type === 'jira:globalPage') {
   const { showMine } = await import('./mine.jsx');
   showMine();

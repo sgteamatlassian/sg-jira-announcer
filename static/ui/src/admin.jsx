@@ -8,8 +8,10 @@ import './styles.css';
 
 const EMPTY = {
   title: '', body: '', display: 'dialog', size: 'medium', appearance: 'info', buttonText: 'Got it',
-  allowSnooze: false, snoozeHours: 24, enabled: false, startAt: null, endAt: null, groups: [], users: [], projects: []
+  allowSnooze: false, snoozeHours: 24, enabled: false, startAt: null, endAt: null, groups: [], users: [], projects: [],
+  excludedGroups: [], mandatory: false, surfaces: 'jira', excludeClaimedDomains: false
 };
+const SURFACE_LABELS = { jira: 'in Jira', portal: 'in the customer portal', both: 'in Jira and the customer portal' };
 const CHIP_PREVIEW = 60;
 
 const formatDate = value => (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '–');
@@ -28,11 +30,16 @@ function audience(announcement) {
     announcement.groups.length ? `Members of ${announcement.groups.map(group => group.name).join(', ')}` : '',
     people.length > 3 ? `${people.length} people` : people.join(', ')
   ].filter(Boolean).join(' + ') || 'Everyone';
-  const count = announcement.projects.length;
-  const where = !count ? 'on every Jira page'
+  const excluded = (announcement.excludedGroups || []).map(group => group.name);
+  if (announcement.excludeClaimedDomains) excluded.push('claimed domains');
+  const except = excluded.length ? ` except ${excluded.join(', ')}` : '';
+  const surfaces = announcement.surfaces || 'jira';
+  const count = announcement.mandatory || surfaces === 'portal' ? 0 : announcement.projects.length;
+  const where = surfaces === 'portal' ? 'on every portal page'
+    : announcement.mandatory || !count ? (surfaces === 'both' ? 'on every Jira and portal page' : 'on every Jira page')
     : count <= 4 ? `inside ${announcement.projects.join(', ')}`
       : `inside ${count} projects (${announcement.projects.slice(0, 3).join(', ')}, …)`;
-  return `${who} · ${where}`;
+  return `${who}${except} · ${where}${announcement.mandatory ? ', mandatory' : ''}`;
 }
 
 // ---- Projects: chips, manual entry and the CSV import -----------------------
@@ -207,7 +214,7 @@ function PickerField({ items, onChange, source, placeholder, emptyText, noMatchT
 
 // ---- Editor -----------------------------------------------------------------
 
-function Editor({ initial, limits, onSaved, onCancel }) {
+function Editor({ initial, limits, claimedDomains = [], onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -249,26 +256,56 @@ function Editor({ initial, limits, onSaved, onCancel }) {
 
       <section>
         <h3>Who gets it</h3>
-        <p className="muted">Without groups and people, everyone gets it. Otherwise only members of the groups and the named people – and always only inside the projects, if any are selected.</p>
+        <p className="muted">Without groups and people, everyone gets it. Otherwise only members of the groups and the named people – and always only inside the projects, if any are selected. Members of an excluded group never get it.</p>
+        <label className="field">Where
+          <select value={form.surfaces || 'jira'} onChange={event => set({ surfaces: event.target.value })}>
+            <option value="jira">Jira only (project and issue views)</option>
+            <option value="portal">Customer portal only</option>
+            <option value="both">Jira and customer portal</option>
+          </select>
+        </label>
+        {(form.surfaces || 'jira') !== 'jira' && <p className="muted">In the customer portal it appears on every portal page, always as a popup. Anonymous visitors do not get it.</p>}
         <h4>Projects</h4>
-        <ProjectsField projects={form.projects} limit={limits.projects} onChange={projects => set({ projects })} />
+        {form.surfaces === 'portal'
+          ? <p className="muted">Not used for the customer portal.</p>
+          : form.mandatory
+            ? <p className="muted">Mandatory announcements appear on every Jira page; the project list is ignored.</p>
+            : <>
+              <ProjectsField projects={form.projects} limit={limits.projects} onChange={projects => set({ projects })} />
+              {form.surfaces === 'both' && form.projects.length > 0 && <p className="muted">The project list only applies inside Jira.</p>}
+            </>}
         <h4>Groups</h4>
         <PickerField items={form.groups} onChange={groups => set({ groups })} source="groups" placeholder="Search groups…"
           emptyText="No groups selected." noMatchText="No further groups found." />
         <h4>People</h4>
         <PickerField items={form.users || []} onChange={users => set({ users })} source="users" placeholder="Search people by name…"
           emptyText="No people selected." noMatchText="No further people found." />
+        <h4>Excluded groups</h4>
+        <PickerField items={form.excludedGroups || []} onChange={excludedGroups => set({ excludedGroups })} source="groups" placeholder="Search groups to exclude…"
+          emptyText="Nobody is excluded." noMatchText="No further groups found." />
+        <label className="check">
+          <input type="checkbox" checked={!!form.excludeClaimedDomains} onChange={event => set({ excludeClaimedDomains: event.target.checked })} />
+          <span><strong>Exclude users of claimed domains</strong> – nobody whose email address is at {claimedDomains.length
+            ? claimedDomains.join(', ')
+            : <em>a claimed domain (none entered yet – add them under Settings)</em>} gets it.</span>
+        </label>
       </section>
 
       <section>
         <h3>How and when</h3>
+        <label className="check">
+          <input type="checkbox" checked={!!form.mandatory} onChange={event => set(event.target.checked ? { mandatory: true, display: 'dialog', allowSnooze: false } : { mandatory: false })} />
+          <span><strong>Mandatory</strong> – a popup on the first page each person opens (where chosen above), on every page, until they confirm it. No “Remind me later”, and it cannot be closed any other way.</span>
+        </label>
         <div className="grid">
-          <label className="field">Shown as
-            <select value={form.display} onChange={event => set({ display: event.target.value })}>
-              <option value="dialog">Popup (dialog)</option>
-              <option value="flag">Flag (bottom-left notice)</option>
-            </select>
-          </label>
+          {!form.mandatory && (
+            <label className="field">Shown as
+              <select value={form.display} onChange={event => set({ display: event.target.value })}>
+                <option value="dialog">Popup (dialog)</option>
+                <option value="flag">Flag (bottom-left notice)</option>
+              </select>
+            </label>
+          )}
           {form.display === 'dialog' && (
             <label className="field">Popup size
               <select value={form.size} onChange={event => set({ size: event.target.value })}>
@@ -292,7 +329,7 @@ function Editor({ initial, limits, onSaved, onCancel }) {
             <input type="datetime-local" value={toLocalInput(form.endAt)} onChange={event => set({ endAt: fromLocalInput(event.target.value) })} />
           </label>
         </div>
-        {form.display === 'dialog' && (
+        {form.display === 'dialog' && !form.mandatory && (
           <label className="check">
             <input type="checkbox" checked={form.allowSnooze} onChange={event => set({ allowSnooze: event.target.checked })} />
             <span>Offer “Remind me later” – ask again after{' '}
@@ -411,11 +448,46 @@ const COLUMNS = [
   { id: 'acks', label: 'Acknowledgements' }
 ];
 
+// ---- Settings ---------------------------------------------------------------
+
+// The organisation's claimed domains (admin.atlassian.com → Settings → Domains).
+// Jira cannot read them, so an administrator enters them here once.
+function Settings({ initial, onSaved, onCancel }) {
+  const [text, setText] = useState((initial.claimedDomains || []).join('\n'));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function save() {
+    setBusy(true); setError('');
+    try {
+      const result = await invoke('saveSettings', { settings: { claimedDomains: text } });
+      onSaved(result.settings);
+    } catch (failure) { setError(message(failure)); setBusy(false); }
+  }
+  return (
+    <form onSubmit={event => { event.preventDefault(); save(); }}>
+      <div className="section-title">
+        <h2>Settings</h2>
+        <div className="row">
+          <button type="button" className="subtle" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      <section>
+        <h3>Claimed domains</h3>
+        <p className="muted">The email domains your organisation has claimed – copy them from admin.atlassian.com → Settings → Domains. One per line. Subdomains count too. Announcements with “Exclude users of claimed domains” are never shown to people with an email address at these domains.</p>
+        <textarea rows={8} value={text} aria-label="Claimed domains" placeholder={'example.com\nexample.org'} onChange={event => setText(event.target.value)} />
+      </section>
+    </form>
+  );
+}
+
 // ---- Page -------------------------------------------------------------------
 
 function App() {
   const [announcements, setAnnouncements] = useState(null);
   const [limits, setLimits] = useState(null);
+  const [settings, setSettings] = useState({ claimedDomains: [] });
   const [screen, setScreen] = useState({ name: 'list' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -427,6 +499,7 @@ function App() {
     try {
       const result = await invoke('list');
       setAnnouncements(result.announcements); setLimits(result.limits); setColumns(result.columns); setError('');
+      if (result.settings) setSettings(result.settings);
     } catch (failure) { setError(message(failure)); }
   }
   useEffect(() => { refresh(); }, []);
@@ -457,8 +530,16 @@ function App() {
   if (screen.name === 'edit') {
     return (
       <main>
-        <Editor initial={screen.announcement} limits={limits} onCancel={() => setScreen({ name: 'list' })}
+        <Editor initial={screen.announcement} limits={limits} claimedDomains={settings.claimedDomains} onCancel={() => setScreen({ name: 'list' })}
           onSaved={async saved => { setNotice(`“${saved.title}” saved.`); setScreen({ name: 'list' }); await refresh(); }} />
+      </main>
+    );
+  }
+  if (screen.name === 'settings') {
+    return (
+      <main>
+        <Settings initial={settings} onCancel={() => setScreen({ name: 'list' })}
+          onSaved={saved => { setSettings(saved); setNotice('Settings saved.'); setScreen({ name: 'list' }); }} />
       </main>
     );
   }
@@ -473,7 +554,10 @@ function App() {
           <h1>SG Announcer</h1>
           <p className="muted">Announcements that pop up for Jira users until they confirm them.</p>
         </div>
-        <button type="button" className="primary" disabled={!limits} onClick={() => { setNotice(''); setScreen({ name: 'edit', announcement: EMPTY }); }}>New announcement</button>
+        <div className="row">
+          <button type="button" disabled={!limits} onClick={() => { setNotice(''); setScreen({ name: 'settings' }); }}>Settings</button>
+          <button type="button" className="primary" disabled={!limits} onClick={() => { setNotice(''); setScreen({ name: 'edit', announcement: EMPTY }); }}>New announcement</button>
+        </div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}

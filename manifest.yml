@@ -28,6 +28,17 @@ modules:
         resource: ui
       experience:
         - all
+  # Customer portal (JSM): announcements set to appear in the portal, on every
+  # portal page, also for portal customers. Anonymous visitors cannot confirm,
+  # so they are left out.
+  jiraServiceManagement:portalHeader:
+    - key: sg-announcer-portal
+      resource: ui
+      resolver:
+        function: resolver
+      unlicensedAccess:
+        - customer
+        - unlicensed
   function:
     - key: resolver
       handler: index.handler
@@ -43,6 +54,8 @@ permissions:
     - read:jira-work
     # Group membership of the viewer, group picker, names in the read report.
     - read:jira-user
+    # Email domain of the viewer, for "exclude users of claimed domains".
+    - read:email-address:jira
 app:
   runtime:
     name: nodejs22.x

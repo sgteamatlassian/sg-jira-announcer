@@ -52,6 +52,8 @@ test('project targeting: an empty list matches everywhere', () => {
   assert.equal(matchesProject({ projects: ['AS'] }, null), false);
   assert.equal(matchesProject({ projects: ['AS'] }, 'SL'), false);
   assert.equal(matchesProject({ projects: ['AS', 'SL'] }, 'SL'), true);
+  assert.equal(matchesProject({ projects: ['AS'], mandatory: true }, 'SL'), true);
+  assert.equal(matchesProject({ projects: ['AS'], mandatory: true }, null), true);
 });
 
 test('rich text: paragraphs, bullets, emphasis and only http(s) links', () => {

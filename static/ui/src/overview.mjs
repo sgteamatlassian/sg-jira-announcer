@@ -34,7 +34,7 @@ export function filterAndSort(announcements, { status = 'all', search = '', sort
     .filter(row => status === 'all' || row.status === status)
     .filter(({ announcement: a }) => {
       if (!words.length) return true;
-      const haystack = [a.title, a.body, ...(a.projects || []), ...(a.groups || []).map(group => group.name), ...(a.users || []).map(user => user.name)].join('\n').toLowerCase();
+      const haystack = [a.title, a.body, ...(a.projects || []), ...(a.groups || []).map(group => group.name), ...(a.excludedGroups || []).map(group => group.name), ...(a.users || []).map(user => user.name)].join('\n').toLowerCase();
       return words.every(word => haystack.includes(word));
     });
   const newest = (a, b) => created(b.announcement) - created(a.announcement);

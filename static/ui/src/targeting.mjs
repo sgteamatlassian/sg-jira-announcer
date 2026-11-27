@@ -19,8 +19,9 @@ export function projectKeyFromContext(extension) {
   return null;
 }
 
-// No project list: shown on every Jira page. Otherwise only inside those projects.
+// Mandatory or no project list: shown on every Jira page. Otherwise only
+// inside those projects. (In the customer portal the project list is not used.)
 export function matchesProject(announcement, projectKey) {
-  if (!announcement.projects?.length) return true;
+  if (announcement.mandatory || !announcement.projects?.length) return true;
   return projectKey != null && announcement.projects.includes(projectKey);
 }

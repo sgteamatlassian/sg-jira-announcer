@@ -14,8 +14,11 @@ const resolver = new Resolver();
 //   user:<accountId>          { acks, snooze, groups } of one person
 //   read:<id>:<accountId>     one acknowledgement, for the "who has read" report
 //   prefs:<accountId>         an administrator's view settings (visible columns)
+//   settings                  app settings: { claimedDomains }
 const ANNOUNCEMENTS = 'announcements';
+const SETTINGS = 'settings';
 const GROUP_CACHE_MS = 10 * 60 * 1000;
+const EMAIL_CACHE_MS = 24 * 60 * 60 * 1000;
 
 async function jira(path, { asUser = false, ...options } = {}) {
   const response = await (asUser ? api.asUser() : api.asApp()).requestJira(path, {
@@ -30,8 +33,13 @@ async function ensureAdmin() {
   if (!result.permissions?.ADMINISTER?.havePermission) throw new Error('Only Jira administrators can use this feature.');
 }
 
-// `users` did not exist in the first version; older records get an empty list.
-const loadAll = async () => ((await kvs.get(ANNOUNCEMENTS)) || []).map(a => ({ ...a, users: a.users || [] }));
+// Fields added after the first version get their defaults on older records.
+const loadAll = async () => ((await kvs.get(ANNOUNCEMENTS)) || [])
+  .map(a => ({
+    ...a, users: a.users || [], excludedGroups: a.excludedGroups || [], mandatory: a.mandatory === true,
+    surfaces: core.SURFACES.includes(a.surfaces) ? a.surfaces : 'jira', excludeClaimedDomains: a.excludeClaimedDomains === true
+  }));
+const loadSettings = async () => ({ claimedDomains: [], ...((await kvs.get(SETTINGS)) || {}) });
 const userKey = accountId => `user:${accountId}`;
 const readKey = (id, accountId) => `read:${id}:${accountId}`;
 
@@ -50,30 +58,71 @@ function admin(name, callback) {
 
 // ---- Every Jira user (background script) ------------------------------------
 
-async function groupIdsOf(accountId, state, now) {
+async function groupIdsOf(accountId, state, now, accountType) {
   if (state.groups && now - state.groups.at < GROUP_CACHE_MS) return state.groups.ids;
-  const groups = await jira(route`/rest/api/3/user/groups?accountId=${accountId}`);
+  let groups;
+  try {
+    groups = await jira(route`/rest/api/3/user/groups?accountId=${accountId}`);
+  } catch (error) {
+    // Portal-only customers are not Jira users and belong to no Jira group.
+    if (accountType !== 'customer') throw error;
+    groups = [];
+  }
   const ids = groups.map(group => group.groupId).filter(Boolean);
   state.groups = { ids, at: now };
   await kvs.set(userKey(accountId), state);
   return ids;
 }
 
-// Announcements the viewer still has to see. Project targeting is applied in
-// the browser, because only the page knows which project is open.
-resolver.define('pending', async ({ context }) => {
+// The domain of the viewer's email address (only the domain is kept, for a day).
+// The email endpoint only answers app requests.
+async function emailDomainOf(accountId, state, now) {
+  if (state.email && now - state.email.at < EMAIL_CACHE_MS) return state.email.domain;
+  const result = await jira(route`/rest/api/3/user/email?accountId=${accountId}`);
+  const domain = core.emailDomain(result?.email);
+  state.email = { domain, at: now };
+  await kvs.set(userKey(accountId), state);
+  return domain;
+}
+
+// Announcements the viewer still has to see on this surface: inside Jira (the
+// background script) or in the customer portal (`surface: 'portal'`). Project
+// targeting is applied in the browser, because only the page knows which
+// project is open.
+resolver.define('pending', async ({ payload, context }) => {
   const accountId = context.accountId;
-  if (!accountId) return { items: [] };
+  if (!accountId || accountId === 'unidentified' || context.accountType === 'anonymous') return { items: [] };
+  const surface = payload?.surface === 'portal' ? 'portal' : 'jira';
   const now = Date.now();
   const all = await loadAll();
   if (!all.some(a => core.isLive(a, now))) return { items: [] };
   const state = (await kvs.get(userKey(accountId))) || {};
-  let open = core.openFor(all, state, now);
+  let open = core.openFor(all, state, now).filter(a => core.shownOn(a, surface));
   let groupIds = [];
-  if (open.some(a => a.groups.length)) {
-    try { groupIds = await groupIdsOf(accountId, state, now); } catch (error) { console.error('Group lookup failed', error.message); }
+  let groupsKnown = true;
+  if (open.some(core.needsGroups)) {
+    try { groupIds = await groupIdsOf(accountId, state, now, context.accountType); } catch (error) {
+      groupsKnown = false;
+      console.error('Group lookup failed', error.message);
+    }
   }
-  open = open.filter(a => core.matchesAudience(a, accountId, groupIds));
+  const viewer = { domain: null, claimedDomains: [] };
+  let emailKnown = true;
+  if (open.some(core.needsEmail)) {
+    viewer.claimedDomains = (await loadSettings()).claimedDomains;
+    if (viewer.claimedDomains.length) {
+      try { viewer.domain = await emailDomainOf(accountId, state, now); } catch (error) {
+        emailKnown = false;
+        console.error('Email lookup failed', error.message);
+      }
+    }
+  }
+  // Without the memberships or the email domain an excluded person cannot be
+  // recognised: such announcements wait for the next page view instead.
+  open = open.filter(a => (groupsKnown || !a.excludedGroups.length) && (emailKnown || !a.excludeClaimedDomains)
+    && core.matchesAudience(a, accountId, groupIds, viewer));
+  // Mandatory announcements come first.
+  open.sort((a, b) => Number(b.mandatory) - Number(a.mandatory));
   return { items: open.map(core.publicView) };
 });
 
@@ -84,7 +133,7 @@ async function current(id) {
 resolver.define('acknowledge', async ({ payload, context }) => {
   const accountId = context.accountId;
   const announcement = await current(payload?.id);
-  if (!accountId || !announcement) return { ok: false };
+  if (!accountId || accountId === 'unidentified' || !announcement) return { ok: false };
   const at = new Date().toISOString();
   const state = (await kvs.get(userKey(accountId))) || {};
   state.acks = { ...state.acks, [announcement.id]: { rev: announcement.rev, at } };
@@ -97,7 +146,7 @@ resolver.define('acknowledge', async ({ payload, context }) => {
 resolver.define('snooze', async ({ payload, context }) => {
   const accountId = context.accountId;
   const announcement = await current(payload?.id);
-  if (!accountId || !announcement || !announcement.allowSnooze) return { ok: false };
+  if (!accountId || !announcement || !announcement.allowSnooze || announcement.mandatory) return { ok: false };
   const state = (await kvs.get(userKey(accountId))) || {};
   state.snooze = { ...state.snooze, [announcement.id]: { rev: announcement.rev, until: Date.now() + announcement.snoozeHours * 3600 * 1000 } };
   await kvs.set(userKey(accountId), state);
@@ -117,8 +166,15 @@ resolver.define('mine', async ({ context }) => {
 const prefsKey = accountId => `prefs:${accountId}`;
 
 admin('list', async (payload, context) => {
-  const [announcements, prefs] = await Promise.all([loadAll(), kvs.get(prefsKey(context.accountId))]);
-  return { announcements, limits: core.LIMITS, columns: core.normalizeColumns(prefs?.columns, prefs?.known) };
+  const [announcements, prefs, settings] = await Promise.all([loadAll(), kvs.get(prefsKey(context.accountId)), loadSettings()]);
+  return { announcements, settings, limits: core.LIMITS, columns: core.normalizeColumns(prefs?.columns, prefs?.known) };
+});
+
+// App settings shared by all administrators: the organisation's claimed domains.
+admin('saveSettings', async ({ settings }) => {
+  const saved = { ...(await loadSettings()), claimedDomains: core.normalizeDomains(settings?.claimedDomains) };
+  await kvs.set(SETTINGS, saved);
+  return { settings: saved };
 });
 
 // The columns this administrator wants to see in the overview.
