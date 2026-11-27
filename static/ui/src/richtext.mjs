@@ -1,9 +1,20 @@
 // A deliberately small text format for announcement bodies, rendered without
 // innerHTML so nothing an administrator types can become markup or script:
 //   blank line = new paragraph, "- " = bullet, **bold**, *italic*,
-//   [text](https://…) and bare https://… links.
+//   [text](https://…) / [text](mailto:…) and bare https://… links and email
+//   addresses (which become mailto: links).
 
-const INLINE = /\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"]+)/g;
+const EMAIL = '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}';
+const INLINE = new RegExp([
+  '\\*\\*(.+?)\\*\\*',
+  '\\*(.+?)\\*',
+  '\\[([^\\]\\n]+)\\]\\(((?:https?:\\/\\/|mailto:)[^\\s)]+)\\)',
+  '(https?:\\/\\/[^\\s<>"]+)',
+  `(?:mailto:)?(${EMAIL})`
+].join('|'), 'g');
+
+// Link targets the format accepts: web pages and email.
+export const isLinkTarget = href => /^(https?:\/\/|mailto:)/i.test(href || '');
 
 export function parseInline(text) {
   const parts = [];
@@ -13,6 +24,7 @@ export function parseInline(text) {
     if (match[1] != null) parts.push({ text: match[1], bold: true });
     else if (match[2] != null) parts.push({ text: match[2], italic: true });
     else if (match[3] != null) parts.push({ text: match[3], href: match[4] });
+    else if (match[6] != null) parts.push({ text: match[6], href: `mailto:${match[6]}` });
     else {
       // Punctuation right after a bare link belongs to the sentence.
       const href = match[5].replace(/[.,;:!?)]+$/, '');
@@ -108,7 +120,7 @@ function collectRuns(node, mark, runs) {
       let next = mark;
       if (!mark) {
         const href = child.nodeName === 'A' ? child.getAttribute('href') || '' : '';
-        if (/^https?:\/\//i.test(href)) next = `a:${href}`;
+        if (isLinkTarget(href)) next = `a:${href}`;
         else if (isBold(child)) next = 'b';
         else if (isItalic(child)) next = 'i';
       }
@@ -130,7 +142,8 @@ function runsToMarkup(runs) {
     else if (run.mark === 'i') out += `${lead}*${core}*${trail}`;
     else {
       const href = run.mark.slice(2);
-      out += `${lead}${core === href ? href : `[${core.replace(/[[\]]/g, '')}](${href})`}${trail}`;
+      const bare = core === href || href.toLowerCase() === `mailto:${core.toLowerCase()}`;
+      out += `${lead}${bare ? core : `[${core.replace(/[[\]]/g, '')}](${href})`}${trail}`;
     }
   }
   return out.split('\n').map(line => line.trim()).filter(Boolean).join('\n');

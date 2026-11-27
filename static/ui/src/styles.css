@@ -69,6 +69,12 @@ button.link { border: 0; background: none; padding: 4px; font-weight: 500; text-
 .popup-warning .popup-icon { background: var(--warning); }
 .popup-error .popup-icon { background: var(--danger); }
 .popup-success .popup-icon { background: var(--success); }
+.popup-logo { flex: none; max-height: 40px; max-width: 160px; object-fit: contain; }
+.popup-header:has(.popup-logo) .popup-icon { display: none; }
+.popup-picture { display: block; max-width: 100%; height: auto; margin: 0 auto 14px; border-radius: 4px; }
+.image-picker { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.image-picker p { margin: 0; }
+.image-preview { max-width: 320px; max-height: 180px; object-fit: contain; align-self: flex-start; border: 1px solid var(--border); border-radius: 4px; padding: 4px; background: var(--surface); }
 .popup-body { flex: 1; overflow: auto; padding: 8px 24px 16px; font-size: 15px; overflow-wrap: anywhere; }
 .popup-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 14px 24px 20px; border-top: 1px solid var(--border); }
 .popup-note { margin-right: auto; }

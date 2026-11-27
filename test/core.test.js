@@ -179,3 +179,20 @@ test('exclude users of claimed domains: only when the announcement says so', () 
   const named = make({ excludeClaimedDomains: true, users: [{ id: 'me', name: 'Me' }] });
   assert.equal(core.matchesAudience(named, 'me', [], claimed), false);
 });
+
+test('picture: none by default, logo or own picture; the browser learns which', () => {
+  assert.equal(make().image, 'none');
+  assert.equal(make({ image: 'bogus' }).image, 'none');
+  assert.equal(make({ image: 'logo' }).image, 'logo');
+  assert.equal(core.publicView(make({ image: 'custom' })).image, 'custom');
+  assert.equal('imageData' in make({ image: 'custom', imageData: 'data:image/png;base64,AAAA' }), false);
+  const { image, ...old } = make();
+  assert.equal(core.publicView(old).image, 'none');
+});
+
+test('uploaded pictures must be small raster data URLs', () => {
+  assert.equal(core.validateImage('data:image/png;base64,iVBORw0KGgo='), 'data:image/png;base64,iVBORw0KGgo=');
+  assert.throws(() => core.validateImage('data:image/svg+xml;base64,PHN2Zz4='), /PNG, JPEG, WebP or GIF/);
+  assert.throws(() => core.validateImage('https://example.com/logo.png'), /PNG, JPEG, WebP or GIF/);
+  assert.throws(() => core.validateImage(`data:image/jpeg;base64,${'A'.repeat(core.LIMITS.imageChars)}`), /too large/);
+});

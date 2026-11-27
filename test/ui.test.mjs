@@ -121,3 +121,32 @@ test('overview: live announcements first, then by creation date; filter by statu
   assert.deepEqual(titles({ search: 'live', status: 'disabled' }), []);
   assert.deepEqual(countByStatus(list, now), { all: 5, live: 2, scheduled: 1, disabled: 1, ended: 1 });
 });
+
+test('pictures are scaled so that the longer side fits', async () => {
+  const { fitSize } = await import('../static/ui/src/images.mjs');
+  assert.deepEqual(fitSize(4000, 2000, 1400), { width: 1400, height: 700 });
+  assert.deepEqual(fitSize(300, 600, 1400), { width: 300, height: 600 });
+  assert.deepEqual(fitSize(1000, 1, 100), { width: 100, height: 1 });
+});
+
+test('rich text: mailto links and bare email addresses', () => {
+  const [{ lines: [line] }] = parseRichText('Report it to atlassian@scigames.at. Or [write us](mailto:help@example.com?subject=Access), mailto:a.b@x.co.uk, see https://example.com/@team');
+  assert.deepEqual(line.filter(part => part.href), [
+    { text: 'atlassian@scigames.at', href: 'mailto:atlassian@scigames.at' },
+    { text: 'write us', href: 'mailto:help@example.com?subject=Access' },
+    { text: 'a.b@x.co.uk', href: 'mailto:a.b@x.co.uk' },
+    { text: 'https://example.com/@team', href: 'https://example.com/@team' }
+  ]);
+  assert.equal(line.map(part => part.text).join(''), 'Report it to atlassian@scigames.at. Or write us, a.b@x.co.uk, see https://example.com/@team');
+  assert.equal(toPlainText('mail me@example.com'), 'mail me@example.com');
+});
+
+test('visual editor keeps mailto links', async () => {
+  const { domToMarkup } = await import('../static/ui/src/richtext.mjs');
+  const el = (nodeName, children = [], attrs = {}) => ({
+    nodeType: 1, nodeName, style: {}, getAttribute: name => attrs[name] ?? null,
+    childNodes: children.map(child => (typeof child === 'string' ? { nodeType: 3, nodeValue: child } : child))
+  });
+  const root = el('DIV', [el('P', ['Mail ', el('A', ['atlassian@scigames.at'], { href: 'mailto:atlassian@scigames.at' }), ' or ', el('A', ['the team'], { href: 'mailto:team@example.com' })])]);
+  assert.equal(domToMarkup(root), 'Mail atlassian@scigames.at or [the team](mailto:team@example.com)');
+});

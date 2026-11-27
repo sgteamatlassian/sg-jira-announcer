@@ -18,18 +18,23 @@ announcements.push(
   { ...announcements[0], id: '44444444-4444-4444-8444-444444444444', title: 'Password policy change', groups: [], projects: [], createdAt: days(-10), updatedAt: days(-10) },
   { ...announcements[0], id: '55555555-5555-4555-8555-555555555555', title: 'Summer freeze', groups: [], projects: [], endAt: days(-60), createdAt: days(-90), updatedAt: days(-90) }
 );
-let settings = { claimedDomains: ['example.com'] };
+let settings = { claimedDomains: ['example.com'], hasLogo: false };
+const images = {};
 let columns = JSON.parse(localStorage.getItem('mock-columns') || 'null') || ['status', 'created', 'audience', 'period', 'acks'];
 const handlers = {
   saveSettings: payload => {
-    settings = { claimedDomains: String(payload.settings.claimedDomains).split(/[\s,;]+/).filter(Boolean) };
+    settings = { ...settings, claimedDomains: String(payload.settings.claimedDomains).split(/[\s,;]+/).filter(Boolean) };
     return { settings };
   },
+  saveLogo: ({ dataUrl }) => { images.logo = dataUrl; settings = { ...settings, hasLogo: dataUrl != null }; return { settings }; },
+  image: ({ name }) => ({ dataUrl: images[name] || null }),
   list: () => ({ announcements, columns, settings, limits: { title: 200, body: 10000, buttonText: 40, projects: 2000 } }),
   ackCounts: () => ({ counts: Object.fromEntries(announcements.map((a, i) => [a.id, i === 3 ? null : i * 17])) }),
   saveColumns: payload => { columns = payload.columns; localStorage.setItem('mock-columns', JSON.stringify(columns)); return { columns }; },
   save: ({ announcement }) => {
-    const saved = { rev: 1, ...announcement, id: announcement.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    const { imageData, ...rest } = announcement;
+    const saved = { rev: 1, ...rest, id: announcement.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    if (imageData) images[saved.id] = imageData;
     announcements = announcement.id ? announcements.map(a => (a.id === saved.id ? saved : a)) : [saved, ...announcements];
     return { announcement: saved };
   },

@@ -4,12 +4,13 @@ import { invoke, view, Modal } from '@forge/bridge';
 import { parseProjectKeysCsv } from './csv.mjs';
 import { BodyEditor } from './editor.jsx';
 import { STATUSES, SORTS, filterAndSort, countByStatus } from './overview.mjs';
+import { shrinkImage, IMAGE_ACCEPT } from './images.mjs';
 import './styles.css';
 
 const EMPTY = {
   title: '', body: '', display: 'dialog', size: 'medium', appearance: 'info', buttonText: 'Got it',
   allowSnooze: false, snoozeHours: 24, enabled: false, startAt: null, endAt: null, groups: [], users: [], projects: [],
-  excludedGroups: [], mandatory: false, surfaces: 'jira', excludeClaimedDomains: false
+  excludedGroups: [], mandatory: false, surfaces: 'jira', excludeClaimedDomains: false, image: 'none'
 };
 const SURFACE_LABELS = { jira: 'in Jira', portal: 'in the customer portal', both: 'in Jira and the customer portal' };
 const CHIP_PREVIEW = 60;
@@ -40,6 +41,47 @@ function audience(announcement) {
     : count <= 4 ? `inside ${announcement.projects.join(', ')}`
       : `inside ${count} projects (${announcement.projects.slice(0, 3).join(', ')}, …)`;
   return `${who}${except} · ${where}${announcement.mandatory ? ', mandatory' : ''}`;
+}
+
+// ---- Pictures ---------------------------------------------------------------
+
+// The stored picture ('logo' or an announcement id), loaded once for a preview.
+function useStoredImage(name) {
+  const [dataUrl, setDataUrl] = useState(null);
+  useEffect(() => {
+    if (!name) { setDataUrl(null); return undefined; }
+    let stale = false;
+    invoke('image', { name }).then(result => { if (!stale) setDataUrl(result.dataUrl); }).catch(() => {});
+    return () => { stale = true; };
+  }, [name]);
+  return dataUrl;
+}
+
+// A preview plus a button that picks a file and shrinks it (see images.mjs).
+function ImagePicker({ dataUrl, onPick, maxSide, chooseText, children }) {
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function onFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setBusy(true); setError('');
+    try { await onPick((await shrinkImage(file, { maxSide })).dataUrl); } catch (failure) { setError(message(failure)); }
+    setBusy(false);
+  }
+  return (
+    <div className="image-picker">
+      {dataUrl ? <img className="image-preview" src={dataUrl} alt="" /> : <p className="muted">No picture yet.</p>}
+      <div className="row">
+        <button type="button" disabled={busy} onClick={() => input.current.click()}>{busy ? 'Preparing…' : chooseText}</button>
+        {children}
+      </div>
+      <input type="file" ref={input} accept={IMAGE_ACCEPT} hidden onChange={onFile} />
+      <p className="muted">PNG, JPEG, WebP, GIF or SVG. Large pictures are made smaller automatically.</p>
+      {error && <p className="error" role="alert">{error}</p>}
+    </div>
+  );
 }
 
 // ---- Projects: chips, manual entry and the CSV import -----------------------
@@ -214,11 +256,13 @@ function PickerField({ items, onChange, source, placeholder, emptyText, noMatchT
 
 // ---- Editor -----------------------------------------------------------------
 
-function Editor({ initial, limits, claimedDomains = [], onSaved, onCancel }) {
+function Editor({ initial, limits, claimedDomains = [], hasLogo = false, onSaved, onCancel }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = patch => setForm(previous => ({ ...previous, ...patch }));
+  const storedPicture = useStoredImage(initial.id && initial.image === 'custom' ? initial.id : null);
+  const picture = form.imageData || storedPicture;
 
   async function save() {
     setBusy(true); setError('');
@@ -229,7 +273,8 @@ function Editor({ initial, limits, claimedDomains = [], onSaved, onCancel }) {
   }
 
   function preview() {
-    new Modal({ resource: 'ui', size: form.size, context: { announcement: { ...form, title: form.title || 'Title', buttonText: form.buttonText || 'Got it' }, preview: true } }).open();
+    const announcement = { ...form, title: form.title || 'Title', buttonText: form.buttonText || 'Got it', imageData: form.image === 'custom' ? picture : null };
+    new Modal({ resource: 'ui', size: form.size, context: { announcement, preview: true } }).open();
   }
 
   return (
@@ -252,6 +297,21 @@ function Editor({ initial, limits, claimedDomains = [], onSaved, onCancel }) {
         <div className="field">Text
           <BodyEditor value={form.body} maxLength={limits.body} onChange={body => set({ body })} />
         </div>
+        <label className="field">Picture
+          <select value={form.image || 'none'} onChange={event => set({ image: event.target.value })}>
+            <option value="none">None</option>
+            <option value="logo">Logo (next to the title)</option>
+            <option value="custom">Own picture (above the text)</option>
+          </select>
+        </label>
+        {form.image === 'logo' && (hasLogo
+          ? <p className="muted">The logo uploaded under Settings is shown next to the title.</p>
+          : <p className="error">No logo uploaded yet – add it under Settings, otherwise the popup shows no picture.</p>)}
+        {form.image === 'custom' && (
+          <ImagePicker dataUrl={picture} maxSide={1400} chooseText={picture ? 'Choose another picture…' : 'Choose picture…'}
+            onPick={dataUrl => set({ imageData: dataUrl })} />
+        )}
+        {form.image !== 'none' && form.display === 'flag' && !form.mandatory && <p className="muted">Flags cannot show pictures; only popups do.</p>}
       </section>
 
       <section>
@@ -452,8 +512,21 @@ const COLUMNS = [
 
 // The organisation's claimed domains (admin.atlassian.com → Settings → Domains).
 // Jira cannot read them, so an administrator enters them here once.
-function Settings({ initial, onSaved, onCancel }) {
+function Settings({ initial, onSaved, onCancel, onLogoChanged }) {
   const [text, setText] = useState((initial.claimedDomains || []).join('\n'));
+  const stored = useStoredImage(initial.hasLogo ? 'logo' : null);
+  const [logo, setLogo] = useState(undefined); // undefined = unchanged
+  const [logoNotice, setLogoNotice] = useState('');
+  const shownLogo = logo === undefined ? stored : logo;
+  async function saveLogo(dataUrl) {
+    setError(''); setLogoNotice('');
+    try {
+      const result = await invoke('saveLogo', { dataUrl });
+      setLogo(dataUrl);
+      onLogoChanged(result.settings);
+      setLogoNotice(dataUrl ? 'Logo saved.' : 'Logo removed.');
+    } catch (failure) { setError(message(failure)); }
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function save() {
@@ -478,6 +551,14 @@ function Settings({ initial, onSaved, onCancel }) {
         <p className="muted">The email domains your organisation has claimed – copy them from admin.atlassian.com → Settings → Domains. One per line. Subdomains count too. Announcements with “Exclude users of claimed domains” are never shown to people with an email address at these domains.</p>
         <textarea rows={8} value={text} aria-label="Claimed domains" placeholder={'example.com\nexample.org'} onChange={event => setText(event.target.value)} />
       </section>
+      <section>
+        <h3>Logo</h3>
+        <p className="muted">Shown next to the title of announcements with the picture “Logo”. Saved as soon as you choose or remove it.</p>
+        <ImagePicker dataUrl={shownLogo} maxSide={600} chooseText={shownLogo ? 'Replace logo…' : 'Upload logo…'} onPick={saveLogo}>
+          {shownLogo && <button type="button" className="subtle" onClick={() => { if (window.confirm('Remove the logo? Announcements with the picture “Logo” then show none.')) saveLogo(null); }}>Remove logo</button>}
+        </ImagePicker>
+        {logoNotice && <p className="notice" role="status">{logoNotice}</p>}
+      </section>
     </form>
   );
 }
@@ -487,7 +568,7 @@ function Settings({ initial, onSaved, onCancel }) {
 function App() {
   const [announcements, setAnnouncements] = useState(null);
   const [limits, setLimits] = useState(null);
-  const [settings, setSettings] = useState({ claimedDomains: [] });
+  const [settings, setSettings] = useState({ claimedDomains: [], hasLogo: false });
   const [screen, setScreen] = useState({ name: 'list' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -530,7 +611,7 @@ function App() {
   if (screen.name === 'edit') {
     return (
       <main>
-        <Editor initial={screen.announcement} limits={limits} claimedDomains={settings.claimedDomains} onCancel={() => setScreen({ name: 'list' })}
+        <Editor initial={screen.announcement} limits={limits} claimedDomains={settings.claimedDomains} hasLogo={settings.hasLogo} onCancel={() => setScreen({ name: 'list' })}
           onSaved={async saved => { setNotice(`“${saved.title}” saved.`); setScreen({ name: 'list' }); await refresh(); }} />
       </main>
     );
@@ -538,7 +619,7 @@ function App() {
   if (screen.name === 'settings') {
     return (
       <main>
-        <Settings initial={settings} onCancel={() => setScreen({ name: 'list' })}
+        <Settings initial={settings} onCancel={() => setScreen({ name: 'list' })} onLogoChanged={setSettings}
           onSaved={saved => { setSettings(saved); setNotice('Settings saved.'); setScreen({ name: 'list' }); }} />
       </main>
     );

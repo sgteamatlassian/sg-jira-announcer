@@ -8,6 +8,9 @@ const SIZES = ['small', 'medium', 'large'];
 const APPEARANCES = ['info', 'success', 'warning', 'error'];
 // Where it appears: inside Jira, in the JSM customer portal, or both.
 const SURFACES = ['jira', 'portal', 'both'];
+// Picture: none, the app-wide logo (uploaded under Settings) or an own picture.
+const IMAGES = ['none', 'logo', 'custom'];
+const IMAGE_DATA = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,254}$/;
 const ID = /^[a-f0-9-]{36}$/;
@@ -21,6 +24,8 @@ const LIMITS = {
   projects: 2000,
   announcements: 100,
   domains: 200,
+  // One picture is one storage value (max. 240 KiB), kept as a data URL.
+  imageChars: 200 * 1024,
   // One Forge storage value may hold 240 KiB; all announcements share one key.
   totalBytes: 200 * 1024
 };
@@ -120,6 +125,7 @@ function normalizeAnnouncement(input, { existing = null, id, now, actor }) {
     users: normalizeUsers(input.users),
     excludedGroups: normalizeGroups(input.excludedGroups, 'excluded groups'),
     excludeClaimedDomains: input.excludeClaimedDomains === true,
+    image: oneOf(input.image, IMAGES, 'none'),
     projects: normalizeProjects(input.projects),
     createdAt: existing ? existing.createdAt : stamp,
     updatedAt: stamp,
@@ -150,6 +156,14 @@ function openFor(announcements, state, now) {
   return announcements.filter(a => isLive(a, now)
     && !(acks[a.id] && acks[a.id].rev === a.rev)
     && !(snooze[a.id] && snooze[a.id].rev === a.rev && now < snooze[a.id].until));
+}
+
+// An uploaded picture: a base64 data URL of a raster image that fits into one
+// storage value. (SVG is not accepted; the browser converts uploads first.)
+function validateImage(value) {
+  if (typeof value !== 'string' || !IMAGE_DATA.test(value)) throw new Error('The picture must be a PNG, JPEG, WebP or GIF image.');
+  if (value.length > LIMITS.imageChars) throw new Error('The picture is too large.');
+  return value;
 }
 
 // The claimed domains of the organisation, as an administrator entered them
@@ -206,7 +220,7 @@ function confirmedBy(announcements, state) {
   return announcements
     .filter(a => acks[a.id])
     .map(a => ({
-      id: a.id, title: a.title, body: a.body, size: a.size, appearance: a.appearance,
+      id: a.id, title: a.title, body: a.body, size: a.size, appearance: a.appearance, image: a.image || 'none',
       confirmedAt: acks[a.id].at || null, changed: acks[a.id].rev !== a.rev
     }))
     .sort((a, b) => (Date.parse(b.confirmedAt) || 0) - (Date.parse(a.confirmedAt) || 0));
@@ -238,12 +252,12 @@ function publicView(a) {
   return {
     id: a.id, rev: a.rev, title: a.title, body: a.body, display: a.display, size: a.size,
     appearance: a.appearance, buttonText: a.buttonText, allowSnooze: a.allowSnooze,
-    snoozeHours: a.snoozeHours, projects: a.projects, mandatory: a.mandatory === true
+    snoozeHours: a.snoozeHours, projects: a.projects, mandatory: a.mandatory === true, image: a.image || 'none'
   };
 }
 
 module.exports = {
   LIMITS, PROJECT_KEY, ID, normalizeAnnouncement, normalizeProjects, assertFits,
   isLive, openFor, matchesAudience, needsGroups, needsEmail, publicView,
-  SURFACES, shownOn, normalizeDomains, emailDomain, isClaimed, confirmedBy, COLUMNS, normalizeColumns
+  SURFACES, shownOn, normalizeDomains, emailDomain, isClaimed, IMAGES, validateImage, confirmedBy, COLUMNS, normalizeColumns
 };

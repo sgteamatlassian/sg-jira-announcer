@@ -14,7 +14,9 @@ const resolver = new Resolver();
 //   user:<accountId>          { acks, snooze, groups } of one person
 //   read:<id>:<accountId>     one acknowledgement, for the "who has read" report
 //   prefs:<accountId>         an administrator's view settings (visible columns)
-//   settings                  app settings: { claimedDomains }
+//   settings                  app settings: { claimedDomains, hasLogo }
+//   image:logo                the logo (data URL), uploaded under Settings
+//   image:<id>                the own picture of one announcement (data URL)
 const ANNOUNCEMENTS = 'announcements';
 const SETTINGS = 'settings';
 const GROUP_CACHE_MS = 10 * 60 * 1000;
@@ -37,9 +39,11 @@ async function ensureAdmin() {
 const loadAll = async () => ((await kvs.get(ANNOUNCEMENTS)) || [])
   .map(a => ({
     ...a, users: a.users || [], excludedGroups: a.excludedGroups || [], mandatory: a.mandatory === true,
-    surfaces: core.SURFACES.includes(a.surfaces) ? a.surfaces : 'jira', excludeClaimedDomains: a.excludeClaimedDomains === true
+    surfaces: core.SURFACES.includes(a.surfaces) ? a.surfaces : 'jira', excludeClaimedDomains: a.excludeClaimedDomains === true,
+    image: core.IMAGES.includes(a.image) ? a.image : 'none'
   }));
-const loadSettings = async () => ({ claimedDomains: [], ...((await kvs.get(SETTINGS)) || {}) });
+const loadSettings = async () => ({ claimedDomains: [], hasLogo: false, ...((await kvs.get(SETTINGS)) || {}) });
+const imageKey = name => `image:${name}`;
 const userKey = accountId => `user:${accountId}`;
 const readKey = (id, accountId) => `read:${id}:${accountId}`;
 
@@ -153,6 +157,13 @@ resolver.define('snooze', async ({ payload, context }) => {
   return { ok: true };
 });
 
+// The picture of an announcement, loaded by the popup when it opens (kept out
+// of "pending" so page views stay light): `name` is 'logo' or an announcement id.
+resolver.define('image', async ({ payload }) => {
+  const name = payload?.name === 'logo' ? 'logo' : requireId(payload?.name);
+  return { dataUrl: (await kvs.get(imageKey(name))) || null };
+});
+
 // "My announcements": what the viewer has confirmed so far.
 resolver.define('mine', async ({ context }) => {
   const accountId = context.accountId;
@@ -177,6 +188,15 @@ admin('saveSettings', async ({ settings }) => {
   return { settings: saved };
 });
 
+// The logo for announcements with the picture "Logo"; null removes it.
+admin('saveLogo', async ({ dataUrl }) => {
+  if (dataUrl == null) await kvs.delete(imageKey('logo'));
+  else await kvs.set(imageKey('logo'), core.validateImage(dataUrl));
+  const saved = { ...(await loadSettings()), hasLogo: dataUrl != null };
+  await kvs.set(SETTINGS, saved);
+  return { settings: saved };
+});
+
 // The columns this administrator wants to see in the overview.
 admin('saveColumns', async ({ columns }, context) => {
   if (!Array.isArray(columns) || columns.some(id => !core.COLUMNS.includes(id))) throw new Error('Invalid columns.');
@@ -185,6 +205,8 @@ admin('saveColumns', async ({ columns }, context) => {
   return { columns: saved };
 });
 
+// `announcement.imageData`: a newly chosen own picture (data URL); it is stored
+// apart from the announcement. Without one, an own picture stays as it was.
 admin('save', async ({ announcement }, context) => {
   const all = await loadAll();
   const index = announcement?.id ? all.findIndex(a => a.id === announcement.id) : -1;
@@ -192,9 +214,13 @@ admin('save', async ({ announcement }, context) => {
   const saved = core.normalizeAnnouncement(announcement, {
     existing: index >= 0 ? all[index] : null, id: randomUUID(), now: Date.now(), actor: context.accountId
   });
+  const imageData = announcement.imageData == null ? null : core.validateImage(announcement.imageData);
+  if (saved.image === 'custom' && !imageData && !(await kvs.get(imageKey(saved.id)))) throw new Error('Choose a picture to upload, or set Picture to None.');
   if (index >= 0) all[index] = saved; else all.unshift(saved);
   core.assertFits(all);
+  if (saved.image === 'custom' && imageData) await kvs.set(imageKey(saved.id), imageData);
   await kvs.set(ANNOUNCEMENTS, all);
+  if (saved.image !== 'custom') await kvs.delete(imageKey(saved.id));
   return { announcement: saved };
 });
 
@@ -238,6 +264,7 @@ admin('resetAcknowledgements', async ({ id }) => {
 admin('remove', async ({ id }) => {
   requireId(id);
   await kvs.set(ANNOUNCEMENTS, (await loadAll()).filter(a => a.id !== id));
+  await kvs.delete(imageKey(id));
   // Best effort: the read receipts of a deleted announcement are never shown again.
   const deadline = Date.now() + 15000;
   let cursor;

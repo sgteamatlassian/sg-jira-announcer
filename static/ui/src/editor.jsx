@@ -14,10 +14,14 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">{ICONS[name]}</svg>;
 }
 
+// Web address or email: "name@example.com" becomes a mailto: link, anything
+// else without a scheme becomes https://.
 const normalizeUrl = value => {
   const url = value.trim();
   if (!url) return '';
-  return /^https?:\/\//i.test(url) ? url : `https://${url.replace(/^\/+/, '')}`;
+  if (/^(https?:\/\/|mailto:)/i.test(url)) return url;
+  if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(url)) return `mailto:${url}`;
+  return `https://${url.replace(/^\/+/, '')}`;
 };
 
 export function BodyEditor({ value, onChange, maxLength }) {
@@ -177,7 +181,7 @@ export function BodyEditor({ value, onChange, maxLength }) {
 
       {linkUrl != null && (
         <div className="link-row">
-          <input autoFocus value={linkUrl} placeholder="https://…" aria-label="Link address" onChange={event => setLinkUrl(event.target.value)}
+          <input autoFocus value={linkUrl} placeholder="https://… or name@example.com" aria-label="Link address or email" onChange={event => setLinkUrl(event.target.value)}
             onKeyDown={event => {
               if (event.key === 'Enter') { event.preventDefault(); applyLink(); }
               if (event.key === 'Escape') setLinkUrl(null);
@@ -203,7 +207,7 @@ export function BodyEditor({ value, onChange, maxLength }) {
         </div>
       )}
       <div className="editor-foot muted">
-        <span>{mode === 'code' ? 'Blank line = new paragraph · “- ” = bullet · **bold** · *italic* · [link text](https://…)' : 'Enter = new paragraph · Shift+Enter = line break'}</span>
+        <span>{mode === 'code' ? 'Blank line = new paragraph · “- ” = bullet · **bold** · *italic* · [link text](https://… or mailto:…) · email addresses become links' : 'Enter = new paragraph · Shift+Enter = line break'}</span>
         <span className={value.length > maxLength ? 'over' : ''}>{value.length} / {maxLength}</span>
       </div>
     </div>
